@@ -72,7 +72,8 @@ impl<'a> AppState<'a> {
         lines.push(String::new()); // blank separator line
         lines.push(status);
 
-        let _ = render_frame(&mut self.writer, &lines, self.prev_line_count);
+        let max_rows = terminal_height as usize;
+        let _ = render_frame(&mut self.writer, &lines, self.prev_line_count, max_rows);
         let _ = self.writer.flush();
         self.prev_line_count = lines.len();
     }
@@ -118,11 +119,13 @@ pub fn run(
                         state.render(w, h);
                     }
                     Ok(WatchEvent::RootDeleted) => {
+                        let (_, h) = terminal_size();
                         let _ = render_frame(
                             &mut state.writer,
                             &[format!("Directory deleted: {}", path.display()),
                               "Exiting...".to_string()],
                             state.prev_line_count,
+                            h as usize,
                         );
                         let _ = state.writer.flush();
                         break;

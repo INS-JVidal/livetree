@@ -50,31 +50,45 @@ pub fn install_panic_hook() {
 /// 1. Move cursor to (0, 0)
 /// 2. For each line: clear the current line, write the content
 /// 3. Clear leftover lines from the previous frame
-/// 4. The caller is responsible for flushing (to achieve single-syscall output)
+/// 4. Never writes past `max_rows` to prevent terminal scrolling
+/// 5. The caller is responsible for flushing (to achieve single-syscall output)
 ///
-/// Returns the number of lines written.
+/// Returns the number of content lines written.
 pub fn render_frame<W: Write>(
     writer: &mut W,
     lines: &[String],
     prev_line_count: usize,
+    max_rows: usize,
 ) -> io::Result<usize> {
     // Move cursor home
     queue!(writer, cursor::MoveTo(0, 0))?;
 
-    // Write each line, clearing as we go.
-    // Use \r\n because in raw mode \n only moves down, doesn't return to column 0.
-    for line in lines {
+    // Cap lines to max_rows to prevent scrolling.
+    // We can write at most max_rows lines using max_rows-1 \r\n transitions
+    // (the last line uses no \r\n to avoid scrolling off the bottom).
+    let visible = lines.len().min(max_rows);
+
+    for (i, line) in lines[..visible].iter().enumerate() {
         queue!(writer, terminal::Clear(terminal::ClearType::CurrentLine))?;
-        write!(writer, "{}\r\n", line)?;
+        if i < visible - 1 || visible < max_rows {
+            // Not the last row of the terminal — safe to newline
+            write!(writer, "{}\r\n", line)?;
+        } else {
+            // Last usable row — write without \r\n to prevent scroll
+            write!(writer, "{}", line)?;
+        }
     }
 
-    // Clear any leftover lines from the previous frame
-    for _ in lines.len()..prev_line_count {
+    // Clear leftover lines from previous frame, but never past max_rows
+    let clear_up_to = prev_line_count.min(max_rows);
+    for i in visible..clear_up_to {
         queue!(writer, terminal::Clear(terminal::ClearType::CurrentLine))?;
-        write!(writer, "\r\n")?;
+        if i < max_rows - 1 {
+            write!(writer, "\r\n")?;
+        }
     }
 
-    Ok(lines.len())
+    Ok(visible)
 }
 
 /// Get the current terminal size, falling back to (80, 24) if unavailable.

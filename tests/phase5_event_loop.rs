@@ -52,7 +52,7 @@ fn test_full_pipeline_build_render_frame() {
 
     // Feed through frame renderer
     let mut frame_buf: Vec<u8> = Vec::new();
-    let count = livetree::terminal::render_frame(&mut frame_buf, &lines, 0).unwrap();
+    let count = livetree::terminal::render_frame(&mut frame_buf, &lines, 0, 1000).unwrap();
 
     assert_eq!(count, lines.len());
     assert!(count >= 3, "Should have at least 3 lines (src, main.rs, README.md)");

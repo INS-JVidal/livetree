@@ -20,7 +20,7 @@ fn test_render_frame_writes_cursor_home() {
     let mut buf = Vec::new();
     let lines = vec!["├── file.txt".to_string()];
 
-    render_frame(&mut buf, &lines, 0).unwrap();
+    render_frame(&mut buf, &lines, 0, 1000).unwrap();
 
     assert!(
         has_cursor_home(&buf),
@@ -35,7 +35,7 @@ fn test_render_frame_clears_leftover_lines() {
     let lines = vec!["line1".to_string()];
 
     // Previous frame had 5 lines, current has 1 → should clear current + 4 leftovers
-    render_frame(&mut buf, &lines, 5).unwrap();
+    render_frame(&mut buf, &lines, 5, 1000).unwrap();
 
     let clear_count = count_clear_sequences(&buf);
     assert!(
@@ -53,14 +53,14 @@ fn test_render_frame_returns_line_count() {
         "line2".to_string(),
         "line3".to_string(),
     ];
-    let count = render_frame(&mut buf, &lines, 0).unwrap();
+    let count = render_frame(&mut buf, &lines, 0, 1000).unwrap();
     assert_eq!(count, 3);
 }
 
 #[test]
 fn test_render_frame_empty_clears_previous() {
     let mut buf = Vec::new();
-    let count = render_frame(&mut buf, &[], 3).unwrap();
+    let count = render_frame(&mut buf, &[], 3, 1000).unwrap();
     assert_eq!(count, 0);
 
     let clear_count = count_clear_sequences(&buf);
@@ -79,7 +79,7 @@ fn test_render_frame_content_present() {
         "│   └── main.rs".to_string(),
         "└── README.md".to_string(),
     ];
-    render_frame(&mut buf, &lines, 0).unwrap();
+    render_frame(&mut buf, &lines, 0, 1000).unwrap();
 
     let output = String::from_utf8_lossy(&buf);
     assert!(output.contains("src"), "Output should contain 'src'");

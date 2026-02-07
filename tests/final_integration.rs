@@ -302,13 +302,13 @@ fn test_full_lifecycle() {
 
         // Feed through frame renderer
         let mut frame_buf: Vec<u8> = Vec::new();
-        let count = render_frame(&mut frame_buf, &lines, 0).unwrap();
+        let count = render_frame(&mut frame_buf, &lines, 0, 1000).unwrap();
         assert_eq!(count, lines.len());
         info!("  [PASS] Frame renderer produced {} lines", count);
 
         // Simulate shrinking tree
         let mut frame_buf2: Vec<u8> = Vec::new();
-        let count2 = render_frame(&mut frame_buf2, &lines[..3], count).unwrap();
+        let count2 = render_frame(&mut frame_buf2, &lines[..3], count, 1000).unwrap();
         assert_eq!(count2, 3);
         info!("  [PASS] Frame renderer handles shrinking tree");
 
@@ -478,7 +478,7 @@ fn test_performance_large_directory() {
         .collect();
     let start = Instant::now();
     let mut frame_buf: Vec<u8> = Vec::new();
-    render_frame(&mut frame_buf, &lines, 0).unwrap();
+    render_frame(&mut frame_buf, &lines, 0, 1000).unwrap();
     let frame_duration = start.elapsed();
     info!(
         "Frame render: {} bytes in {:?}",
