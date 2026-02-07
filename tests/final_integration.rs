@@ -16,6 +16,7 @@ use common::default_tree_config;
 use livetree::render::{line_to_plain_text, status_bar_line, tree_to_lines, RenderConfig};
 use livetree::tree::{build_ignore_set, build_tree, TreeConfig};
 use livetree::watcher::{start_watcher, WatchEvent};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -153,6 +154,7 @@ fn test_full_lifecycle() {
                 use_color: false,
                 terminal_width: 80,
             },
+            &HashSet::new(),
         );
         let output: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
         info!("Rendered tree:\n{}", output);
@@ -243,7 +245,7 @@ fn test_full_lifecycle() {
         let start = Instant::now();
         fs::write(watch_tmp.path().join("new.txt"), "content").unwrap();
         match rx.recv_timeout(Duration::from_secs(2)) {
-            Ok(WatchEvent::Changed) => {
+            Ok(WatchEvent::Changed(_)) => {
                 info!("  [PASS] Detected creation in {:?}", start.elapsed());
             }
             other => {
@@ -257,7 +259,7 @@ fn test_full_lifecycle() {
         let start = Instant::now();
         fs::write(watch_tmp.path().join("new.txt"), "modified").unwrap();
         match rx.recv_timeout(Duration::from_secs(2)) {
-            Ok(WatchEvent::Changed) => {
+            Ok(WatchEvent::Changed(_)) => {
                 info!("  [PASS] Detected modification in {:?}", start.elapsed());
             }
             other => warn!("  [WARN] Unexpected event on modify: {:?}", other),
@@ -268,7 +270,7 @@ fn test_full_lifecycle() {
         let start = Instant::now();
         fs::remove_file(watch_tmp.path().join("new.txt")).unwrap();
         match rx.recv_timeout(Duration::from_secs(2)) {
-            Ok(WatchEvent::Changed) => {
+            Ok(WatchEvent::Changed(_)) => {
                 info!("  [PASS] Detected deletion in {:?}", start.elapsed());
             }
             other => warn!("  [WARN] Unexpected event on delete: {:?}", other),
@@ -294,7 +296,7 @@ fn test_full_lifecycle() {
         };
 
         // Render to ratatui Lines
-        let lines = tree_to_lines(&entries, &render_cfg);
+        let lines = tree_to_lines(&entries, &render_cfg, &HashSet::new());
         info!("Rendered {} lines", lines.len());
 
         assert!(lines.len() >= 3, "Should have at least 3 lines");
@@ -448,6 +450,7 @@ fn test_performance_large_directory() {
             use_color: true,
             terminal_width: 120,
         },
+        &HashSet::new(),
     );
     let render_duration = start.elapsed();
     info!(

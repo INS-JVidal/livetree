@@ -3,6 +3,8 @@
 use crate::tree::TreeEntry;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 /// Configuration for the rendering pipeline.
 pub struct RenderConfig {
@@ -18,28 +20,52 @@ const DIR_STYLE: Style = Style::new()
     .add_modifier(Modifier::BOLD);
 const SYMLINK_STYLE: Style = Style::new().fg(Color::Cyan);
 const ERROR_STYLE: Style = Style::new().fg(Color::Red);
-const DIM_STYLE: Style = Style::new().add_modifier(Modifier::DIM);
+const PREFIX_STYLE: Style = Style::new().fg(Color::White);
+const CHANGED_STYLE: Style = Style::new()
+    .fg(Color::Cyan)
+    .add_modifier(Modifier::BOLD);
 
 /// Convert a slice of `TreeEntry` into styled ratatui `Line` objects.
-pub fn tree_to_lines(entries: &[TreeEntry], config: &RenderConfig) -> Vec<Line<'static>> {
-    entries.iter().map(|e| entry_to_line(e, config)).collect()
+pub fn tree_to_lines(
+    entries: &[TreeEntry],
+    config: &RenderConfig,
+    changed_paths: &HashSet<PathBuf>,
+) -> Vec<Line<'static>> {
+    entries
+        .iter()
+        .map(|e| entry_to_line(e, config, changed_paths))
+        .collect()
 }
 
 /// Convert a single `TreeEntry` into a styled `Line`.
-fn entry_to_line(entry: &TreeEntry, config: &RenderConfig) -> Line<'static> {
+fn entry_to_line(
+    entry: &TreeEntry,
+    config: &RenderConfig,
+    changed_paths: &HashSet<PathBuf>,
+) -> Line<'static> {
+    let is_changed = config.use_color && changed_paths.contains(&entry.path);
     let mut spans = Vec::new();
 
     // Prefix (tree-drawing characters)
     if !entry.prefix.is_empty() {
         if config.use_color {
-            spans.push(Span::styled(entry.prefix.clone(), DIM_STYLE));
+            let prefix_style = PREFIX_STYLE;
+            spans.push(Span::styled(entry.prefix.clone(), prefix_style));
         } else {
             spans.push(Span::raw(entry.prefix.clone()));
         }
     }
 
     // Name + decorations
-    if let Some(ref err) = entry.error {
+    if is_changed {
+        // Changed entries always get cyan bold, regardless of type
+        spans.push(Span::styled(entry.name.clone(), CHANGED_STYLE));
+        if entry.is_symlink {
+            if let Some(ref target) = entry.symlink_target {
+                spans.push(Span::styled(format!(" -> {}", target), CHANGED_STYLE));
+            }
+        }
+    } else if let Some(ref err) = entry.error {
         let text = format!("{} [{}]", entry.name, err);
         if config.use_color {
             spans.push(Span::styled(text, ERROR_STYLE));
@@ -91,6 +117,13 @@ pub fn status_bar_line(
         .add_modifier(Modifier::BOLD);
 
     Line::from(Span::styled(text, style))
+}
+
+/// Build a help bar `Line` showing available keyboard shortcuts.
+pub fn help_bar_line() -> Line<'static> {
+    let text = " q: Sortir  |  r: Reset  |  ↑↓/jk: Scroll  |  PgUp/PgDn: Pàgina  |  Home/End";
+    let style = Style::new().fg(Color::DarkGray);
+    Line::from(Span::styled(text.to_string(), style))
 }
 
 /// Extract plain text from a `Line` (useful for testing).

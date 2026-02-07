@@ -1,7 +1,7 @@
 //! Main event loop: multiplexes filesystem events and keyboard input,
 //! rendering via ratatui's immediate-mode draw loop.
 
-use crate::render::{status_bar_line, tree_to_lines, RenderConfig};
+use crate::render::{help_bar_line, status_bar_line, tree_to_lines, RenderConfig};
 use crate::terminal::Term;
 use crate::tree::{build_tree, TreeConfig};
 use crate::watcher::WatchEvent;
@@ -10,10 +10,15 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::layout::{Constraint, Layout};
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
+
+/// How long a per-file highlight stays visible.
+const HIGHLIGHT_DURATION: Duration = Duration::from_secs(3);
 
 /// Holds mutable state for the application's render loop.
 struct AppState<'a> {
@@ -25,6 +30,8 @@ struct AppState<'a> {
     tree_config: &'a TreeConfig,
     /// Total number of tree lines (for scroll clamping).
     total_lines: usize,
+    /// Paths changed in recent filesystem events, each with its own insertion time.
+    changed_paths: HashMap<PathBuf, Instant>,
 }
 
 impl<'a> AppState<'a> {
@@ -37,11 +44,19 @@ impl<'a> AppState<'a> {
             path,
             tree_config,
             total_lines: 0,
+            changed_paths: HashMap::new(),
         }
     }
 
     /// Rebuild the tree and render a complete frame via ratatui.
     fn render(&mut self) {
+        // Remove per-file expired highlights
+        let now = Instant::now();
+        self.changed_paths.retain(|_, inserted| now.duration_since(*inserted) < HIGHLIGHT_DURATION);
+
+        // Build a temporary HashSet of active highlights for tree_to_lines
+        let active_highlights: HashSet<PathBuf> = self.changed_paths.keys().cloned().collect();
+
         let entries = build_tree(self.path, self.tree_config);
         let entry_count = entries.len();
 
@@ -50,12 +65,12 @@ impl<'a> AppState<'a> {
             terminal_width: self.terminal.size().map(|s| s.width).unwrap_or(80),
         };
 
-        let tree_lines = tree_to_lines(&entries, &r_cfg);
+        let tree_lines = tree_to_lines(&entries, &r_cfg, &active_highlights);
         self.total_lines = tree_lines.len();
 
-        // Clamp scroll offset
+        // Clamp scroll offset (2 rows reserved: status bar + help bar)
         let area_height = self.terminal.size().map(|s| s.height).unwrap_or(24);
-        let tree_area_height = area_height.saturating_sub(1) as usize; // 1 row for status bar
+        let tree_area_height = area_height.saturating_sub(2) as usize;
         if self.total_lines > tree_area_height {
             let max_scroll = self.total_lines.saturating_sub(tree_area_height);
             if self.scroll_offset > max_scroll {
@@ -87,12 +102,16 @@ impl<'a> AppState<'a> {
             r_cfg.terminal_width,
         );
 
+        // Build help bar
+        let help = help_bar_line();
+
         let _ = self.terminal.draw(|frame| {
             let area = frame.area();
 
-            // Split: tree area takes all but the last row, status bar gets 1 row
+            // Split: tree area, status bar (1 row), help bar (1 row)
             let chunks = Layout::vertical([
                 Constraint::Min(1),
+                Constraint::Length(1),
                 Constraint::Length(1),
             ])
             .split(area);
@@ -105,6 +124,10 @@ impl<'a> AppState<'a> {
             // Status bar
             let status_widget = Paragraph::new(status);
             frame.render_widget(status_widget, chunks[1]);
+
+            // Help bar
+            let help_widget = Paragraph::new(help);
+            frame.render_widget(help_widget, chunks[2]);
         });
     }
 
@@ -139,10 +162,10 @@ impl<'a> AppState<'a> {
         self.scroll_offset = usize::MAX;
     }
 
-    /// Get the visible tree area height.
+    /// Get the visible tree area height (minus status bar + help bar).
     fn visible_height(&self) -> usize {
         let h = self.terminal.size().map(|s| s.height).unwrap_or(24);
-        h.saturating_sub(1) as usize
+        h.saturating_sub(2) as usize
     }
 }
 
@@ -179,8 +202,14 @@ pub fn run(
         select! {
             recv(fs_rx) -> msg => {
                 match msg {
-                    Ok(WatchEvent::Changed) => {
+                    Ok(WatchEvent::Changed(paths)) => {
                         state.last_change = Some(chrono_lite_now());
+                        // Only highlight files, not directories (inotify
+                        // reports parent dirs when their children change).
+                        let now = Instant::now();
+                        for p in paths.into_iter().filter(|p| !p.is_dir()) {
+                            state.changed_paths.insert(p, now);
+                        }
                         // Keep scroll position; render() will clamp if tree shrunk
                         state.render();
                     }
@@ -205,6 +234,10 @@ pub fn run(
                     Ok(Event::Key(KeyEvent { code, modifiers, kind: KeyEventKind::Press, .. })) => {
                         match code {
                             KeyCode::Char('q') => break,
+                            KeyCode::Char('r') => {
+                                state.changed_paths.clear();
+                                state.render();
+                            }
                             KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => break,
                             KeyCode::Up | KeyCode::Char('k') => {
                                 state.scroll_up(1);

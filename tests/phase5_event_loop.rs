@@ -3,6 +3,7 @@ mod common;
 use common::default_tree_config;
 use livetree::render::{tree_to_lines, RenderConfig};
 use livetree::tree::build_tree;
+use std::collections::HashSet;
 use std::time::Duration;
 use tempfile::TempDir;
 
@@ -44,7 +45,7 @@ fn test_full_pipeline_build_render() {
         terminal_width: 80,
     };
 
-    let lines = tree_to_lines(&entries, &rcfg);
+    let lines = tree_to_lines(&entries, &rcfg, &HashSet::new());
 
     assert!(lines.len() >= 3, "Should have at least 3 lines (src, main.rs, README.md)");
 

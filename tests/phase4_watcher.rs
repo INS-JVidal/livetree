@@ -15,7 +15,7 @@ fn test_watcher_detects_file_creation() {
 
     let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     assert!(
-        matches!(event, WatchEvent::Changed),
+        matches!(event, WatchEvent::Changed(_)),
         "Expected Changed, got {:?}",
         event
     );
@@ -40,7 +40,7 @@ fn test_watcher_detects_file_deletion() {
 
     let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     assert!(
-        matches!(event, WatchEvent::Changed),
+        matches!(event, WatchEvent::Changed(_)),
         "Expected Changed, got {:?}",
         event
     );
@@ -65,7 +65,7 @@ fn test_watcher_detects_file_modification() {
 
     let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     assert!(
-        matches!(event, WatchEvent::Changed),
+        matches!(event, WatchEvent::Changed(_)),
         "Expected Changed, got {:?}",
         event
     );
@@ -85,7 +85,7 @@ fn test_watcher_detects_directory_creation() {
 
     let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     assert!(
-        matches!(event, WatchEvent::Changed),
+        matches!(event, WatchEvent::Changed(_)),
         "Expected Changed, got {:?}",
         event
     );
@@ -144,7 +144,7 @@ fn test_watcher_detects_nested_changes() {
 
     let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     assert!(
-        matches!(event, WatchEvent::Changed),
+        matches!(event, WatchEvent::Changed(_)),
         "Expected Changed, got {:?}",
         event
     );

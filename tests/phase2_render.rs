@@ -1,9 +1,11 @@
 mod common;
 
 use common::{color_render_config, line_to_text, make_entry, no_color_render_config};
-use livetree::render::{line_to_plain_text, status_bar_line, tree_to_lines, RenderConfig};
+use livetree::render::{help_bar_line, line_to_plain_text, status_bar_line, tree_to_lines, RenderConfig};
 use livetree::tree::TreeEntry;
 use ratatui::style::{Color, Modifier};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 fn no_color_config() -> RenderConfig {
     no_color_render_config(120)
@@ -18,7 +20,7 @@ fn color_config() -> RenderConfig {
 fn test_tree_to_lines_plain_file_no_color() {
     let entry = make_entry("hello.txt", 1, false, false, true, "\u{2514}\u{2500}\u{2500} ", None);
     let config = no_color_config();
-    let lines = tree_to_lines(&[entry], &config);
+    let lines = tree_to_lines(&[entry], &config, &HashSet::new());
     assert_eq!(lines.len(), 1);
     let text = line_to_text(&lines[0]);
     assert_eq!(text, "\u{2514}\u{2500}\u{2500} hello.txt");
@@ -29,7 +31,7 @@ fn test_tree_to_lines_plain_file_no_color() {
 fn test_tree_to_lines_directory_with_color() {
     let entry = make_entry("src", 1, true, false, false, "\u{251c}\u{2500}\u{2500} ", None);
     let config = color_config();
-    let lines = tree_to_lines(&[entry], &config);
+    let lines = tree_to_lines(&[entry], &config, &HashSet::new());
     assert_eq!(lines.len(), 1);
 
     // Check that directory name span has bold blue style
@@ -45,11 +47,12 @@ fn test_tree_to_lines_directory_with_color() {
         "Directory should be bold"
     );
 
-    // Check prefix span is dim
+    // Check prefix span is white
     let prefix_span = &line.spans[0];
-    assert!(
-        prefix_span.style.add_modifier.contains(Modifier::DIM),
-        "Prefix should be dim"
+    assert_eq!(
+        prefix_span.style.fg,
+        Some(Color::White),
+        "Prefix should be white"
     );
 }
 
@@ -79,7 +82,7 @@ fn test_tree_to_lines_symlink_with_color() {
         error: None,
     };
     let config = color_config();
-    let lines = tree_to_lines(&[entry], &config);
+    let lines = tree_to_lines(&[entry], &config, &HashSet::new());
     let line = &lines[0];
 
     // Check that symlink name span has cyan style
@@ -104,7 +107,7 @@ fn test_tree_to_lines_symlink_with_color() {
 fn test_tree_to_lines_error_with_color() {
     let entry = make_entry("broken_dir", 1, true, false, true, "\u{2514}\u{2500}\u{2500} ", Some("Permission denied"));
     let config = color_config();
-    let lines = tree_to_lines(&[entry], &config);
+    let lines = tree_to_lines(&[entry], &config, &HashSet::new());
     let line = &lines[0];
 
     // Check that error span has red style
@@ -132,7 +135,7 @@ fn test_tree_to_lines_normal() {
         make_entry("README.md", 1, false, false, true, "\u{2514}\u{2500}\u{2500} ", None),
     ];
     let config = no_color_config();
-    let lines = tree_to_lines(&entries, &config);
+    let lines = tree_to_lines(&entries, &config, &HashSet::new());
 
     assert_eq!(lines.len(), 3, "Should have 3 lines");
     let texts: Vec<String> = lines.iter().map(line_to_text).collect();
@@ -146,7 +149,7 @@ fn test_tree_to_lines_normal() {
 fn test_tree_to_lines_empty() {
     let entries: Vec<TreeEntry> = Vec::new();
     let config = no_color_config();
-    let lines = tree_to_lines(&entries, &config);
+    let lines = tree_to_lines(&entries, &config, &HashSet::new());
     assert_eq!(lines.len(), 0, "Empty tree should produce 0 lines");
 }
 
@@ -191,4 +194,88 @@ fn test_status_bar_line_has_style() {
     let span = &bar.spans[0];
     assert_eq!(span.style.fg, Some(Color::White), "Status bar should have white text");
     assert_eq!(span.style.bg, Some(Color::DarkGray), "Status bar should have dark gray background");
+}
+
+// --- Test 10: Changed entries get cyan bold style ---
+#[test]
+fn test_changed_entry_gets_cyan_style() {
+    let entry = make_entry("modified.txt", 1, false, false, true, "└── ", None);
+    let config = color_config();
+    let changed: HashSet<PathBuf> = [entry.path.clone()].into_iter().collect();
+    let lines = tree_to_lines(&[entry], &config, &changed);
+    let line = &lines[0];
+
+    // Prefix should stay white (tree symbols don't change color)
+    let prefix_span = &line.spans[0];
+    assert_eq!(
+        prefix_span.style.fg,
+        Some(Color::White),
+        "Changed entry prefix should stay white"
+    );
+
+    // Name should be cyan bold
+    let name_span = line.spans.iter().find(|s| s.content.as_ref() == "modified.txt").unwrap();
+    assert_eq!(
+        name_span.style.fg,
+        Some(Color::Cyan),
+        "Changed entry name should be cyan"
+    );
+    assert!(
+        name_span.style.add_modifier.contains(Modifier::BOLD),
+        "Changed entry name should be bold"
+    );
+}
+
+// --- Test 11: Changed directory overrides blue with cyan ---
+#[test]
+fn test_changed_directory_gets_cyan_not_blue() {
+    let entry = make_entry("src", 1, true, false, false, "├── ", None);
+    let config = color_config();
+    let changed: HashSet<PathBuf> = [entry.path.clone()].into_iter().collect();
+    let lines = tree_to_lines(&[entry], &config, &changed);
+    let line = &lines[0];
+
+    let name_span = line.spans.iter().find(|s| s.content.as_ref() == "src").unwrap();
+    assert_eq!(
+        name_span.style.fg,
+        Some(Color::Cyan),
+        "Changed directory should be cyan, not blue"
+    );
+}
+
+// --- Test: help_bar_line contains expected keys ---
+#[test]
+fn test_help_bar_line_contains_keys() {
+    let bar = help_bar_line();
+    let text = line_to_plain_text(&bar);
+    assert!(text.contains("q:"), "Help bar should contain 'q:'. Got: {:?}", text);
+    assert!(text.contains("r:"), "Help bar should contain 'r:'. Got: {:?}", text);
+    assert!(text.contains("↑↓"), "Help bar should contain '↑↓'. Got: {:?}", text);
+    assert!(text.contains("PgUp/PgDn"), "Help bar should contain 'PgUp/PgDn'. Got: {:?}", text);
+    assert!(text.contains("Home/End"), "Help bar should contain 'Home/End'. Got: {:?}", text);
+}
+
+// --- Test: help_bar_line has DarkGray style ---
+#[test]
+fn test_help_bar_line_has_style() {
+    let bar = help_bar_line();
+    let span = &bar.spans[0];
+    assert_eq!(span.style.fg, Some(Color::DarkGray), "Help bar should have DarkGray text");
+}
+
+// --- Test 12: Unchanged entry is unaffected by changed_paths ---
+#[test]
+fn test_unchanged_entry_keeps_normal_style() {
+    let entry = make_entry("src", 1, true, false, false, "├── ", None);
+    let config = color_config();
+    let changed: HashSet<PathBuf> = [PathBuf::from("/tmp/test/other.txt")].into_iter().collect();
+    let lines = tree_to_lines(&[entry], &config, &changed);
+    let line = &lines[0];
+
+    let name_span = line.spans.iter().find(|s| s.content.as_ref() == "src").unwrap();
+    assert_eq!(
+        name_span.style.fg,
+        Some(Color::Blue),
+        "Unchanged directory should remain blue"
+    );
 }

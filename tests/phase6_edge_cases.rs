@@ -3,6 +3,7 @@ mod common;
 use common::{default_tree_config, line_to_text, no_color_render_config};
 use livetree::render::{tree_to_lines, RenderConfig};
 use livetree::tree::{build_tree, TreeConfig, TreeEntry};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -89,7 +90,7 @@ fn test_very_narrow_terminal() {
     };
 
     let cfg = no_color(20);
-    let lines = tree_to_lines(&[entry], &cfg);
+    let lines = tree_to_lines(&[entry], &cfg, &HashSet::new());
     // ratatui handles truncation at render time, so just verify no panic
     assert_eq!(lines.len(), 1);
     let text = line_to_text(&lines[0]);
@@ -117,7 +118,7 @@ fn test_terminal_width_1() {
 
     let cfg = no_color(1);
     // Should not panic
-    let lines = tree_to_lines(&[entry], &cfg);
+    let lines = tree_to_lines(&[entry], &cfg, &HashSet::new());
     assert_eq!(lines.len(), 1);
 }
 
@@ -128,7 +129,7 @@ fn test_empty_root_directory() {
     let tmp = TempDir::new().unwrap();
     let entries = build_tree(tmp.path(), &default_config());
 
-    let lines = tree_to_lines(&entries, &no_color(80));
+    let lines = tree_to_lines(&entries, &no_color(80), &HashSet::new());
     assert!(lines.len() <= 1, "Empty dir should produce at most 1 line");
 }
 
@@ -164,7 +165,7 @@ fn test_symlink_to_file_shows_arrow() {
     assert!(link.is_symlink);
 
     let cfg = no_color(120);
-    let lines = tree_to_lines(&[link.clone()], &cfg);
+    let lines = tree_to_lines(&[link.clone()], &cfg, &HashSet::new());
     let text = line_to_text(&lines[0]);
     assert!(
         text.contains("->"),
@@ -192,7 +193,7 @@ fn test_render_at_various_widths() {
     // Render at multiple widths — none should panic
     for width in [1, 5, 10, 20, 40, 80, 120, 200] {
         let cfg = no_color(width);
-        let lines = tree_to_lines(&[entry.clone()], &cfg);
+        let lines = tree_to_lines(&[entry.clone()], &cfg, &HashSet::new());
         assert_eq!(lines.len(), 1);
     }
 }
@@ -235,7 +236,7 @@ fn test_large_directory_performance() {
     );
 
     let start = std::time::Instant::now();
-    let lines = tree_to_lines(&entries, &no_color(80));
+    let lines = tree_to_lines(&entries, &no_color(80), &HashSet::new());
     let render_time = start.elapsed();
 
     assert_eq!(lines.len(), 500);

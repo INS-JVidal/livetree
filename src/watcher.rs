@@ -4,14 +4,14 @@ use crossbeam_channel::{self, Receiver, Sender};
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, Debouncer, RecommendedCache};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Events emitted by the filesystem watcher.
 #[derive(Debug)]
 pub enum WatchEvent {
-    /// One or more files/directories changed.
-    Changed,
+    /// One or more files/directories changed, with their paths.
+    Changed(Vec<PathBuf>),
     /// The watched root directory was deleted.
     RootDeleted,
     /// A watcher error occurred.
@@ -36,12 +36,16 @@ pub fn start_watcher(
         None,
         move |result: Result<Vec<notify_debouncer_full::DebouncedEvent>, Vec<notify::Error>>| {
             match result {
-                Ok(_events) => {
+                Ok(events) => {
                     // Check if root path still exists
                     if std::fs::metadata(&root_path).is_err() {
                         let _ = tx.send(WatchEvent::RootDeleted);
                     } else {
-                        let _ = tx.send(WatchEvent::Changed);
+                        let paths: Vec<PathBuf> = events
+                            .iter()
+                            .flat_map(|e| e.paths.iter().cloned())
+                            .collect();
+                        let _ = tx.send(WatchEvent::Changed(paths));
                     }
                 }
                 Err(errors) => {
