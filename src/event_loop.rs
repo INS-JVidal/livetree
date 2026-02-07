@@ -1,12 +1,15 @@
-//! Main event loop: multiplexes filesystem events and keyboard input.
+//! Main event loop: multiplexes filesystem events and keyboard input,
+//! rendering via ratatui's immediate-mode draw loop.
 
-use crate::render::{format_status_bar, render_tree, RenderConfig};
-use crate::terminal::{buffered_stdout, render_frame, terminal_size};
+use crate::render::{status_bar_line, tree_to_lines, RenderConfig};
+use crate::terminal::Term;
 use crate::tree::{build_tree, TreeConfig};
 use crate::watcher::WatchEvent;
 use crossbeam_channel::{select, Receiver};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-use std::io::{BufWriter, Stdout, Write};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::{Constraint, Layout};
+use ratatui::text::Line;
+use ratatui::widgets::Paragraph;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -14,73 +17,138 @@ use std::thread;
 
 /// Holds mutable state for the application's render loop.
 struct AppState<'a> {
-    writer: BufWriter<Stdout>,
-    prev_line_count: usize,
+    terminal: Term,
+    scroll_offset: usize,
     last_change: Option<String>,
     use_color: bool,
     path: &'a Path,
     tree_config: &'a TreeConfig,
+    /// Total number of tree lines (for scroll clamping).
+    total_lines: usize,
 }
 
 impl<'a> AppState<'a> {
-    fn new(path: &'a Path, tree_config: &'a TreeConfig, use_color: bool) -> Self {
+    fn new(terminal: Term, path: &'a Path, tree_config: &'a TreeConfig, use_color: bool) -> Self {
         Self {
-            writer: buffered_stdout(),
-            prev_line_count: 0,
+            terminal,
+            scroll_offset: 0,
             last_change: None,
             use_color,
             path,
             tree_config,
+            total_lines: 0,
         }
     }
 
-    /// Rebuild the tree and render a complete frame.
-    fn render(&mut self, terminal_width: u16, terminal_height: u16) {
+    /// Rebuild the tree and render a complete frame via ratatui.
+    fn render(&mut self) {
         let entries = build_tree(self.path, self.tree_config);
         let entry_count = entries.len();
 
         let r_cfg = RenderConfig {
             use_color: self.use_color,
-            terminal_width,
+            terminal_width: self.terminal.size().map(|s| s.width).unwrap_or(80),
         };
 
-        // Render tree lines to a buffer
-        let mut line_buf = Vec::new();
-        let _ = render_tree(&mut line_buf, &entries, &r_cfg);
-        let text = String::from_utf8_lossy(&line_buf);
-        let tree_lines: Vec<String> = text.lines().map(String::from).collect();
+        let tree_lines = tree_to_lines(&entries, &r_cfg);
+        self.total_lines = tree_lines.len();
 
-        // Reserve 2 rows for blank separator + status bar
-        let max_tree_lines = (terminal_height as usize).saturating_sub(2);
-        let truncated = tree_lines.len() > max_tree_lines;
-        let visible_tree: Vec<String> = tree_lines.into_iter().take(max_tree_lines).collect();
+        // Clamp scroll offset
+        let area_height = self.terminal.size().map(|s| s.height).unwrap_or(24);
+        let tree_area_height = area_height.saturating_sub(1) as usize; // 1 row for status bar
+        if self.total_lines > tree_area_height {
+            let max_scroll = self.total_lines.saturating_sub(tree_area_height);
+            if self.scroll_offset > max_scroll {
+                self.scroll_offset = max_scroll;
+            }
+        } else {
+            self.scroll_offset = 0;
+        }
 
-        let mut lines = visible_tree;
+        let scroll_offset = self.scroll_offset;
 
-        // Add status bar
-        let display_count = if truncated {
-            format!("{} entries ({} shown)", entry_count, lines.len())
+        // Build status bar
+        let display_count = if self.total_lines > tree_area_height {
+            format!(
+                "{} entries ({} visible, scroll {}/{})",
+                entry_count,
+                tree_area_height.min(self.total_lines),
+                scroll_offset + 1,
+                self.total_lines.saturating_sub(tree_area_height) + 1,
+            )
         } else {
             format!("{} entries", entry_count)
         };
-        let status = format_status_bar(
-            &self.path.to_string_lossy(),
+        let path_str = self.path.to_string_lossy().to_string();
+        let status = status_bar_line(
+            &path_str,
             &display_count,
             self.last_change.as_deref(),
-            terminal_width,
+            r_cfg.terminal_width,
         );
-        lines.push(String::new()); // blank separator line
-        lines.push(status);
 
-        let max_rows = terminal_height as usize;
-        let _ = render_frame(&mut self.writer, &lines, self.prev_line_count, max_rows);
-        let _ = self.writer.flush();
-        self.prev_line_count = lines.len();
+        let _ = self.terminal.draw(|frame| {
+            let area = frame.area();
+
+            // Split: tree area takes all but the last row, status bar gets 1 row
+            let chunks = Layout::vertical([
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ])
+            .split(area);
+
+            // Tree paragraph with scroll
+            let tree_widget = Paragraph::new(tree_lines)
+                .scroll((scroll_offset as u16, 0));
+            frame.render_widget(tree_widget, chunks[0]);
+
+            // Status bar
+            let status_widget = Paragraph::new(status);
+            frame.render_widget(status_widget, chunks[1]);
+        });
+    }
+
+    /// Render a message (e.g., "Directory deleted") and wait briefly.
+    fn render_message(&mut self, lines: Vec<Line<'static>>) {
+        let _ = self.terminal.draw(|frame| {
+            let area = frame.area();
+            let widget = Paragraph::new(lines);
+            frame.render_widget(widget, area);
+        });
+    }
+
+    /// Scroll up by `n` lines.
+    fn scroll_up(&mut self, n: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(n);
+    }
+
+    /// Scroll down by `n` lines.
+    fn scroll_down(&mut self, n: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_add(n);
+        // render() will clamp
+    }
+
+    /// Scroll to top.
+    fn scroll_home(&mut self) {
+        self.scroll_offset = 0;
+    }
+
+    /// Scroll to bottom.
+    fn scroll_end(&mut self) {
+        // Set to large value; render() will clamp
+        self.scroll_offset = usize::MAX;
+    }
+
+    /// Get the visible tree area height.
+    fn visible_height(&self) -> usize {
+        let h = self.terminal.size().map(|s| s.height).unwrap_or(24);
+        h.saturating_sub(1) as usize
     }
 }
 
 /// Run the main application loop. Blocks until the user quits.
 pub fn run(
+    terminal: Term,
     path: &Path,
     tree_config: &TreeConfig,
     render_config: &RenderConfig,
@@ -93,7 +161,6 @@ pub fn run(
     let shutdown_clone = shutdown.clone();
     let input_handle = thread::spawn(move || {
         while !shutdown_clone.load(Ordering::Relaxed) {
-            // Poll with a timeout so we can check the shutdown flag
             if event::poll(std::time::Duration::from_millis(100)).unwrap_or(false) {
                 if let Ok(evt) = event::read() {
                     let _ = key_tx.send(evt);
@@ -102,11 +169,10 @@ pub fn run(
         }
     });
 
-    let mut state = AppState::new(path, tree_config, render_config.use_color);
+    let mut state = AppState::new(terminal, path, tree_config, render_config.use_color);
 
     // Initial render
-    let (term_width, term_height) = terminal_size();
-    state.render(term_width, term_height);
+    state.render();
 
     // Main event loop
     loop {
@@ -115,19 +181,14 @@ pub fn run(
                 match msg {
                     Ok(WatchEvent::Changed) => {
                         state.last_change = Some(chrono_lite_now());
-                        let (w, h) = terminal_size();
-                        state.render(w, h);
+                        // Keep scroll position; render() will clamp if tree shrunk
+                        state.render();
                     }
                     Ok(WatchEvent::RootDeleted) => {
-                        let (_, h) = terminal_size();
-                        let _ = render_frame(
-                            &mut state.writer,
-                            &[format!("Directory deleted: {}", path.display()),
-                              "Exiting...".to_string()],
-                            state.prev_line_count,
-                            h as usize,
-                        );
-                        let _ = state.writer.flush();
+                        state.render_message(vec![
+                            Line::raw(format!("Directory deleted: {}", path.display())),
+                            Line::raw("Exiting...".to_string()),
+                        ]);
                         break;
                     }
                     Ok(WatchEvent::Error(e)) => {
@@ -141,20 +202,47 @@ pub fn run(
             }
             recv(key_rx) -> msg => {
                 match msg {
-                    Ok(Event::Key(KeyEvent { code: KeyCode::Char('q'), .. })) => break,
-                    Ok(Event::Key(KeyEvent { code: KeyCode::Char('c'), modifiers, .. }))
-                        if modifiers.contains(KeyModifiers::CONTROL) => break,
-                    Ok(Event::Resize(w, h)) => {
-                        state.render(w, h);
+                    Ok(Event::Key(KeyEvent { code, modifiers, kind: KeyEventKind::Press, .. })) => {
+                        match code {
+                            KeyCode::Char('q') => break,
+                            KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => break,
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                state.scroll_up(1);
+                                state.render();
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                state.scroll_down(1);
+                                state.render();
+                            }
+                            KeyCode::PageUp => {
+                                let h = state.visible_height();
+                                state.scroll_up(h);
+                                state.render();
+                            }
+                            KeyCode::PageDown => {
+                                let h = state.visible_height();
+                                state.scroll_down(h);
+                                state.render();
+                            }
+                            KeyCode::Home => {
+                                state.scroll_home();
+                                state.render();
+                            }
+                            KeyCode::End => {
+                                state.scroll_end();
+                                state.render();
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(Event::Resize(_, _)) => {
+                        state.render();
                     }
                     _ => {}
                 }
             }
         }
     }
-
-    // Flush any remaining output before the TerminalGuard drops
-    let _ = state.writer.flush();
 
     // Signal shutdown to input thread and wait
     shutdown.store(true, Ordering::Relaxed);
@@ -170,7 +258,6 @@ fn chrono_lite_now() -> String {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default();
     let secs = now.as_secs();
-    // Convert to HH:MM:SS (UTC — good enough for a status bar)
     let h = (secs % 86400) / 3600;
     let m = (secs % 3600) / 60;
     let s = secs % 60;

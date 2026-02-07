@@ -5,7 +5,11 @@ use std::path::PathBuf;
 
 /// Parsed command-line arguments for livetree.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "livetree", version, about = "Real-time directory tree watcher")]
+#[command(
+    name = "livetree",
+    version = concat!(env!("CARGO_PKG_VERSION"), " (build ", env!("BUILD_NUMBER"), ")"),
+    about = "Real-time directory tree watcher"
+)]
 pub struct Args {
     /// Directory to watch (default: current directory)
     #[arg(default_value = ".")]

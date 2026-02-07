@@ -1,7 +1,7 @@
 mod common;
 
 use common::default_tree_config;
-use livetree::render::RenderConfig;
+use livetree::render::{tree_to_lines, RenderConfig};
 use livetree::tree::build_tree;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -28,9 +28,9 @@ fn test_rebuild_detects_new_file() {
     );
 }
 
-/// Test that the render pipeline works end-to-end: build -> render -> frame.
+/// Test that the render pipeline works end-to-end: build -> tree_to_lines.
 #[test]
-fn test_full_pipeline_build_render_frame() {
+fn test_full_pipeline_build_render() {
     let tmp = TempDir::new().unwrap();
     std::fs::create_dir(tmp.path().join("src")).unwrap();
     std::fs::write(tmp.path().join("src/main.rs"), "").unwrap();
@@ -44,23 +44,18 @@ fn test_full_pipeline_build_render_frame() {
         terminal_width: 80,
     };
 
-    // Render to lines
-    let mut buf = Vec::new();
-    livetree::render::render_tree(&mut buf, &entries, &rcfg).unwrap();
-    let text = String::from_utf8(buf).unwrap();
-    let lines: Vec<String> = text.lines().map(String::from).collect();
+    let lines = tree_to_lines(&entries, &rcfg);
 
-    // Feed through frame renderer
-    let mut frame_buf: Vec<u8> = Vec::new();
-    let count = livetree::terminal::render_frame(&mut frame_buf, &lines, 0, 1000).unwrap();
+    assert!(lines.len() >= 3, "Should have at least 3 lines (src, main.rs, README.md)");
 
-    assert_eq!(count, lines.len());
-    assert!(count >= 3, "Should have at least 3 lines (src, main.rs, README.md)");
-
-    let output = String::from_utf8_lossy(&frame_buf);
-    assert!(output.contains("src"));
-    assert!(output.contains("main.rs"));
-    assert!(output.contains("README.md"));
+    let texts: Vec<String> = lines
+        .iter()
+        .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+        .collect();
+    let all_text = texts.join("\n");
+    assert!(all_text.contains("src"));
+    assert!(all_text.contains("main.rs"));
+    assert!(all_text.contains("README.md"));
 }
 
 /// Test that the watcher + rebuild cycle works together.

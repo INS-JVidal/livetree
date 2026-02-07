@@ -1,6 +1,6 @@
 [package]
 name = "livetree"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Real-time directory tree watcher with flicker-free rendering"
 
@@ -13,6 +13,7 @@ crossbeam-channel = "0.5"
 clap = { version = "4", features = ["derive"] }
 globset = "0.4"
 unicode-width = "0.2"
+ratatui = "0.29"
 
 [dev-dependencies]
 tempfile = "3"

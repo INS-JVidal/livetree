@@ -23,9 +23,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Install panic hook for terminal safety
-    terminal::install_panic_hook();
-
     // Build configs
     let tree_config = TreeConfig {
         max_depth: args.max_depth,
@@ -47,14 +44,19 @@ fn main() {
         std::process::exit(1);
     });
 
-    // Enter raw mode with RAII guard
-    let _guard = terminal::TerminalGuard::new().unwrap_or_else(|e| {
+    // Initialize ratatui terminal (alternate screen, raw mode, panic hook)
+    let term = terminal::init().unwrap_or_else(|e| {
         eprintln!("livetree: failed to initialize terminal: {}", e);
         std::process::exit(1);
     });
 
     // Run the main event loop (blocks until quit)
-    if let Err(e) = event_loop::run(&path, &tree_config, &render_config, fs_rx) {
+    let result = event_loop::run(term, &path, &tree_config, &render_config, fs_rx);
+
+    // Restore terminal state
+    terminal::restore();
+
+    if let Err(e) = result {
         eprintln!("livetree: {}", e);
         std::process::exit(1);
     }

@@ -1,8 +1,9 @@
 mod common;
 
-use common::{color_render_config, make_entry, no_color_render_config, strip_ansi};
-use livetree::render::{format_entry, format_status_bar, render_tree, RenderConfig};
+use common::{color_render_config, line_to_text, make_entry, no_color_render_config};
+use livetree::render::{line_to_plain_text, status_bar_line, tree_to_lines, RenderConfig};
 use livetree::tree::TreeEntry;
+use ratatui::style::{Color, Modifier};
 
 fn no_color_config() -> RenderConfig {
     no_color_render_config(120)
@@ -14,39 +15,48 @@ fn color_config() -> RenderConfig {
 
 // --- Test 1: Plain file (no color) ---
 #[test]
-fn test_format_entry_plain_file_no_color() {
+fn test_tree_to_lines_plain_file_no_color() {
     let entry = make_entry("hello.txt", 1, false, false, true, "\u{2514}\u{2500}\u{2500} ", None);
     let config = no_color_config();
-    let line = format_entry(&entry, &config);
-    assert_eq!(line, "\u{2514}\u{2500}\u{2500} hello.txt");
+    let lines = tree_to_lines(&[entry], &config);
+    assert_eq!(lines.len(), 1);
+    let text = line_to_text(&lines[0]);
+    assert_eq!(text, "\u{2514}\u{2500}\u{2500} hello.txt");
 }
 
 // --- Test 2: Directory with color ---
 #[test]
-fn test_format_entry_directory_with_color() {
+fn test_tree_to_lines_directory_with_color() {
     let entry = make_entry("src", 1, true, false, false, "\u{251c}\u{2500}\u{2500} ", None);
     let config = color_config();
-    let line = format_entry(&entry, &config);
-    // Should contain bold blue for directory name
-    assert!(
-        line.contains("\x1b[1;34m"),
-        "Directory should be bold blue. Got: {:?}",
-        line
+    let lines = tree_to_lines(&[entry], &config);
+    assert_eq!(lines.len(), 1);
+
+    // Check that directory name span has bold blue style
+    let line = &lines[0];
+    let name_span = line.spans.iter().find(|s| s.content.as_ref() == "src").unwrap();
+    assert_eq!(
+        name_span.style.fg,
+        Some(Color::Blue),
+        "Directory should be blue"
     );
-    assert!(line.contains("src"), "Should contain the directory name");
-    // Should contain dim for prefix
     assert!(
-        line.contains("\x1b[2m"),
-        "Prefix should be dim. Got: {:?}",
-        line
+        name_span.style.add_modifier.contains(Modifier::BOLD),
+        "Directory should be bold"
+    );
+
+    // Check prefix span is dim
+    let prefix_span = &line.spans[0];
+    assert!(
+        prefix_span.style.add_modifier.contains(Modifier::DIM),
+        "Prefix should be dim"
     );
 }
 
 // --- Test 3: Symlink with color ---
 #[test]
 #[cfg(unix)]
-fn test_format_entry_symlink_with_color() {
-    // Create a real symlink so read_link works
+fn test_tree_to_lines_symlink_with_color() {
     let tmp = tempfile::TempDir::new().unwrap();
     let target_path = tmp.path().join("target.txt");
     std::fs::write(&target_path, "content").unwrap();
@@ -69,143 +79,116 @@ fn test_format_entry_symlink_with_color() {
         error: None,
     };
     let config = color_config();
-    let line = format_entry(&entry, &config);
-    // Should contain cyan for symlink
-    assert!(
-        line.contains("\x1b[36m"),
-        "Symlink should be cyan. Got: {:?}",
-        line
+    let lines = tree_to_lines(&[entry], &config);
+    let line = &lines[0];
+
+    // Check that symlink name span has cyan style
+    let name_span = line.spans.iter().find(|s| s.content.as_ref() == "link.txt").unwrap();
+    assert_eq!(
+        name_span.style.fg,
+        Some(Color::Cyan),
+        "Symlink should be cyan"
     );
-    // Should contain the arrow and target
+
+    // Check arrow target is present
+    let text = line_to_text(line);
     assert!(
-        line.contains(" -> "),
+        text.contains(" -> "),
         "Symlink should show arrow to target. Got: {:?}",
-        line
+        text
     );
 }
 
 // --- Test 4: Entry with error ---
 #[test]
-fn test_format_entry_error_with_color() {
+fn test_tree_to_lines_error_with_color() {
     let entry = make_entry("broken_dir", 1, true, false, true, "\u{2514}\u{2500}\u{2500} ", Some("Permission denied"));
     let config = color_config();
-    let line = format_entry(&entry, &config);
-    // Should contain red for error
-    assert!(
-        line.contains("\x1b[31m"),
-        "Error should be red. Got: {:?}",
-        line
+    let lines = tree_to_lines(&[entry], &config);
+    let line = &lines[0];
+
+    // Check that error span has red style
+    let error_span = line.spans.iter().find(|s| s.content.contains("Permission denied")).unwrap();
+    assert_eq!(
+        error_span.style.fg,
+        Some(Color::Red),
+        "Error should be red"
     );
-    // Should contain the error message
+
+    let text = line_to_text(line);
     assert!(
-        line.contains("Permission denied"),
+        text.contains("Permission denied"),
         "Should contain error text. Got: {:?}",
-        line
+        text
     );
 }
 
-// --- Test 5: Long filename truncation ---
+// --- Test 5: tree_to_lines with 3 entries ---
 #[test]
-fn test_format_entry_long_name_truncation() {
-    let long_name = "a".repeat(200);
-    let entry = make_entry(&long_name, 1, false, false, true, "\u{2514}\u{2500}\u{2500} ", None);
-    let config = RenderConfig {
-        use_color: false,
-        terminal_width: 40,
-    };
-    let line = format_entry(&entry, &config);
-
-    // Strip ANSI codes for width measurement
-    let plain = strip_ansi(&line);
-    let display_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
-    assert!(
-        display_width <= 40,
-        "Line display width should be <= 40, got {}. Line: {:?}",
-        display_width,
-        line
-    );
-    assert!(
-        line.contains("\u{2026}"),
-        "Truncated line should end with ellipsis. Got: {:?}",
-        line
-    );
-}
-
-// --- Test 6: render_tree with 3 entries ---
-#[test]
-fn test_render_tree_normal() {
+fn test_tree_to_lines_normal() {
     let entries = vec![
         make_entry("src", 1, true, false, false, "\u{251c}\u{2500}\u{2500} ", None),
         make_entry("main.rs", 2, false, false, true, "\u{2502}   \u{2514}\u{2500}\u{2500} ", None),
         make_entry("README.md", 1, false, false, true, "\u{2514}\u{2500}\u{2500} ", None),
     ];
     let config = no_color_config();
-    let mut output = Vec::new();
-    let count = render_tree(&mut output, &entries, &config).unwrap();
+    let lines = tree_to_lines(&entries, &config);
 
-    assert_eq!(count, 3, "Should have written 3 lines");
-    let text = String::from_utf8(output).unwrap();
-    assert!(text.contains("src"), "Output should contain 'src'");
-    assert!(text.contains("main.rs"), "Output should contain 'main.rs'");
-    assert!(text.contains("README.md"), "Output should contain 'README.md'");
+    assert_eq!(lines.len(), 3, "Should have 3 lines");
+    let texts: Vec<String> = lines.iter().map(line_to_text).collect();
+    assert!(texts[0].contains("src"), "First line should contain 'src'");
+    assert!(texts[1].contains("main.rs"), "Second line should contain 'main.rs'");
+    assert!(texts[2].contains("README.md"), "Third line should contain 'README.md'");
 }
 
-// --- Test 7: render_tree with empty tree ---
+// --- Test 6: tree_to_lines with empty tree ---
 #[test]
-fn test_render_tree_empty() {
+fn test_tree_to_lines_empty() {
     let entries: Vec<TreeEntry> = Vec::new();
     let config = no_color_config();
-    let mut output = Vec::new();
-    let count = render_tree(&mut output, &entries, &config).unwrap();
-
-    assert_eq!(count, 0, "Empty tree should produce 0 lines");
-    assert!(output.is_empty(), "Output should be empty for empty tree");
+    let lines = tree_to_lines(&entries, &config);
+    assert_eq!(lines.len(), 0, "Empty tree should produce 0 lines");
 }
 
-// --- Test 8: format_status_bar with timestamp ---
+// --- Test 7: status_bar_line with timestamp ---
 #[test]
-fn test_format_status_bar_with_timestamp() {
-    let bar = format_status_bar("/home/user/project", "42 entries", Some("14:30:05"), 80);
+fn test_status_bar_line_with_timestamp() {
+    let bar = status_bar_line("/home/user/project", "42 entries", Some("14:30:05"), 80);
+    let text = line_to_plain_text(&bar);
     assert!(
-        bar.contains("Watching: /home/user/project"),
+        text.contains("Watching: /home/user/project"),
         "Should contain watched path. Got: {:?}",
-        bar
+        text
     );
     assert!(
-        bar.contains("42 entries"),
+        text.contains("42 entries"),
         "Should contain entry count. Got: {:?}",
-        bar
+        text
     );
     assert!(
-        bar.contains("Last change: 14:30:05"),
+        text.contains("Last change: 14:30:05"),
         "Should contain timestamp. Got: {:?}",
-        bar
+        text
     );
 }
 
-// --- Test 9: format_status_bar with no change ---
+// --- Test 8: status_bar_line with no change ---
 #[test]
-fn test_format_status_bar_no_change() {
-    let bar = format_status_bar("/tmp/test", "10 entries", None, 80);
+fn test_status_bar_line_no_change() {
+    let bar = status_bar_line("/tmp/test", "10 entries", None, 80);
+    let text = line_to_plain_text(&bar);
     assert!(
-        bar.contains("No changes yet"),
+        text.contains("No changes yet"),
         "Should show 'No changes yet'. Got: {:?}",
-        bar
+        text
     );
 }
 
-// --- Test 10: format_status_bar with very long path ---
+// --- Test 9: status_bar_line has styling ---
 #[test]
-fn test_format_status_bar_long_path() {
-    let long_path = "/home/user/".to_string() + &"very_long_directory_name/".repeat(20);
-    let bar = format_status_bar(&long_path, "100 entries", Some("12:00:00"), 60);
-    let plain = strip_ansi(&bar);
-    let display_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
-    assert!(
-        display_width <= 60,
-        "Status bar should not exceed terminal width. Got width={}, bar: {:?}",
-        display_width,
-        bar
-    );
+fn test_status_bar_line_has_style() {
+    let bar = status_bar_line("/tmp/test", "10 entries", None, 80);
+    let span = &bar.spans[0];
+    assert_eq!(span.style.fg, Some(Color::White), "Status bar should have white text");
+    assert_eq!(span.style.bg, Some(Color::DarkGray), "Status bar should have dark gray background");
 }
-

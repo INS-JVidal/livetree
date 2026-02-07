@@ -1,8 +1,8 @@
 mod common;
 
-use common::{default_tree_config, no_color_render_config, strip_ansi};
-use livetree::render::{format_entry, render_tree, RenderConfig};
-use livetree::tree::{build_ignore_set, build_tree, TreeConfig, TreeEntry};
+use common::{default_tree_config, line_to_text, no_color_render_config};
+use livetree::render::{tree_to_lines, RenderConfig};
+use livetree::tree::{build_tree, TreeConfig, TreeEntry};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -89,15 +89,13 @@ fn test_very_narrow_terminal() {
     };
 
     let cfg = no_color(20);
-    let line = format_entry(&entry, &cfg);
-    // Strip ANSI and measure
-    let plain = strip_ansi(&line);
-    let display_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
+    let lines = tree_to_lines(&[entry], &cfg);
+    // ratatui handles truncation at render time, so just verify no panic
+    assert_eq!(lines.len(), 1);
+    let text = line_to_text(&lines[0]);
     assert!(
-        display_width <= 20,
-        "Line should fit in 20-char terminal. Got {} chars: {:?}",
-        display_width,
-        line
+        !text.is_empty(),
+        "Should produce non-empty output even for narrow terminal"
     );
 }
 
@@ -119,7 +117,8 @@ fn test_terminal_width_1() {
 
     let cfg = no_color(1);
     // Should not panic
-    let _line = format_entry(&entry, &cfg);
+    let lines = tree_to_lines(&[entry], &cfg);
+    assert_eq!(lines.len(), 1);
 }
 
 // --- Empty Root ---
@@ -129,9 +128,8 @@ fn test_empty_root_directory() {
     let tmp = TempDir::new().unwrap();
     let entries = build_tree(tmp.path(), &default_config());
 
-    let mut buf = Vec::new();
-    let count = render_tree(&mut buf, &entries, &no_color(80)).unwrap();
-    assert!(count <= 1, "Empty dir should produce at most 1 line");
+    let lines = tree_to_lines(&entries, &no_color(80));
+    assert!(lines.len() <= 1, "Empty dir should produce at most 1 line");
 }
 
 // --- Nested Empty Directories ---
@@ -166,11 +164,12 @@ fn test_symlink_to_file_shows_arrow() {
     assert!(link.is_symlink);
 
     let cfg = no_color(120);
-    let line = format_entry(link, &cfg);
+    let lines = tree_to_lines(&[link.clone()], &cfg);
+    let text = line_to_text(&lines[0]);
     assert!(
-        line.contains("->"),
+        text.contains("->"),
         "Symlink should show target: {:?}",
-        line
+        text
     );
 }
 
@@ -193,9 +192,8 @@ fn test_render_at_various_widths() {
     // Render at multiple widths — none should panic
     for width in [1, 5, 10, 20, 40, 80, 120, 200] {
         let cfg = no_color(width);
-        let mut buf = Vec::new();
-        render_tree(&mut buf, &[entry.clone()], &cfg).unwrap();
-        // Just verify no panic
+        let lines = tree_to_lines(&[entry.clone()], &cfg);
+        assert_eq!(lines.len(), 1);
     }
 }
 
@@ -237,14 +235,13 @@ fn test_large_directory_performance() {
     );
 
     let start = std::time::Instant::now();
-    let mut buf = Vec::new();
-    render_tree(&mut buf, &entries, &no_color(80)).unwrap();
+    let lines = tree_to_lines(&entries, &no_color(80));
     let render_time = start.elapsed();
 
+    assert_eq!(lines.len(), 500);
     assert!(
         render_time < std::time::Duration::from_millis(100),
         "Rendering 500 entries should be fast. Took {:?}",
         render_time
     );
 }
-

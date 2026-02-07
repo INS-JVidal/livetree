@@ -2,7 +2,7 @@
 //!
 //! Exercises the full pipeline:
 //! 1. Creates a realistic directory structure
-//! 2. Tests tree building, rendering, watcher, and frame output
+//! 2. Tests tree building, rendering, watcher, and ratatui Line output
 //! 3. Performs filesystem mutations and verifies correctness
 //! 4. Validates config combinations
 //! 5. Performance smoke test
@@ -13,8 +13,7 @@
 mod common;
 
 use common::default_tree_config;
-use livetree::render::{format_status_bar, render_tree, RenderConfig};
-use livetree::terminal::render_frame;
+use livetree::render::{line_to_plain_text, status_bar_line, tree_to_lines, RenderConfig};
 use livetree::tree::{build_ignore_set, build_tree, TreeConfig};
 use livetree::watcher::{start_watcher, WatchEvent};
 use std::fs;
@@ -83,6 +82,11 @@ fn create_project_fixture(root: &Path) {
     );
 }
 
+/// Extract plain text from a Line.
+fn line_text(line: &ratatui::text::Line<'_>) -> String {
+    line.spans.iter().map(|s| s.content.as_ref()).collect()
+}
+
 // ───────────────────────────────────────────────────
 // Test 1: Full Lifecycle
 // ───────────────────────────────────────────────────
@@ -142,18 +146,15 @@ fn test_full_lifecycle() {
         }
         info!("  [PASS] All entries have valid prefixes");
 
-        // Render for visual inspection
-        let mut buf = Vec::new();
-        render_tree(
-            &mut buf,
+        // Render to ratatui Lines for visual inspection
+        let lines = tree_to_lines(
             &entries,
             &RenderConfig {
                 use_color: false,
                 terminal_width: 80,
             },
-        )
-        .unwrap();
-        let output = String::from_utf8(buf).unwrap();
+        );
+        let output: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
         info!("Rendered tree:\n{}", output);
     }
 
@@ -292,35 +293,28 @@ fn test_full_lifecycle() {
             terminal_width: 80,
         };
 
-        // Render to string lines
-        let mut buf = Vec::new();
-        let line_count = render_tree(&mut buf, &entries, &render_cfg).unwrap();
-        let output = String::from_utf8(buf).unwrap();
-        let lines: Vec<String> = output.lines().map(String::from).collect();
+        // Render to ratatui Lines
+        let lines = tree_to_lines(&entries, &render_cfg);
+        info!("Rendered {} lines", lines.len());
 
-        info!("Rendered {} lines", line_count);
+        assert!(lines.len() >= 3, "Should have at least 3 lines");
 
-        // Feed through frame renderer
-        let mut frame_buf: Vec<u8> = Vec::new();
-        let count = render_frame(&mut frame_buf, &lines, 0, 1000).unwrap();
-        assert_eq!(count, lines.len());
-        info!("  [PASS] Frame renderer produced {} lines", count);
-
-        // Simulate shrinking tree
-        let mut frame_buf2: Vec<u8> = Vec::new();
-        let count2 = render_frame(&mut frame_buf2, &lines[..3], count, 1000).unwrap();
-        assert_eq!(count2, 3);
-        info!("  [PASS] Frame renderer handles shrinking tree");
+        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
+        assert!(all_text.contains("src"));
+        assert!(all_text.contains("main.rs"));
+        assert!(all_text.contains("README.md"));
+        info!("  [PASS] Tree lines contain expected entries");
 
         // Status bar
-        let bar = format_status_bar(
+        let bar = status_bar_line(
             &render_tmp.path().to_string_lossy(),
-            &format!("{} entries", line_count),
+            &format!("{} entries", lines.len()),
             Some("12:34:56"),
             80,
         );
-        assert!(bar.contains("entries"));
-        assert!(bar.contains("12:34:56"));
+        let bar_text = line_to_plain_text(&bar);
+        assert!(bar_text.contains("entries"));
+        assert!(bar_text.contains("12:34:56"));
         info!("  [PASS] Status bar renders correctly");
 
         info!("Render pipeline test complete.");
@@ -446,22 +440,19 @@ fn test_performance_large_directory() {
         build_duration
     );
 
-    // Benchmark rendering
+    // Benchmark rendering to ratatui Lines
     let start = Instant::now();
-    let mut buf = Vec::new();
-    render_tree(
-        &mut buf,
+    let lines = tree_to_lines(
         &entries,
         &RenderConfig {
             use_color: true,
             terminal_width: 120,
         },
-    )
-    .unwrap();
+    );
     let render_duration = start.elapsed();
     info!(
-        "Render: {} bytes in {:?}",
-        buf.len(),
+        "Render: {} lines in {:?}",
+        lines.len(),
         render_duration
     );
     assert!(
@@ -470,28 +461,7 @@ fn test_performance_large_directory() {
         render_duration
     );
 
-    // Benchmark frame output
-    let lines: Vec<String> = String::from_utf8(buf)
-        .unwrap()
-        .lines()
-        .map(String::from)
-        .collect();
-    let start = Instant::now();
-    let mut frame_buf: Vec<u8> = Vec::new();
-    render_frame(&mut frame_buf, &lines, 0, 1000).unwrap();
-    let frame_duration = start.elapsed();
-    info!(
-        "Frame render: {} bytes in {:?}",
-        frame_buf.len(),
-        frame_duration
-    );
-    assert!(
-        frame_duration < Duration::from_millis(100),
-        "Frame render took {:?}, should be < 100ms",
-        frame_duration
-    );
-
-    let total = build_duration + render_duration + frame_duration;
+    let total = build_duration + render_duration;
     info!("  [PASS] Total pipeline: {:?}", total);
     info!("  Target for smooth 5 FPS: < 200ms total. Actual: {:?}", total);
 }

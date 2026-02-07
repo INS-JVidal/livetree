@@ -4,26 +4,6 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-/// Strip ANSI escape sequences from a string for width calculations.
-pub fn strip_ansi(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut in_escape = false;
-    for ch in s.chars() {
-        if in_escape {
-            if ch.is_ascii_alphabetic() {
-                in_escape = false;
-            }
-            continue;
-        }
-        if ch == '\x1b' {
-            in_escape = true;
-            continue;
-        }
-        result.push(ch);
-    }
-    result
-}
-
 /// Default TreeConfig with standard ignore patterns.
 pub fn default_tree_config() -> TreeConfig {
     TreeConfig {
@@ -90,4 +70,9 @@ pub fn make_entry(
         prefix: prefix.to_string(),
         error: error.map(|s| s.to_string()),
     }
+}
+
+/// Extract plain text from a ratatui Line.
+pub fn line_to_text(line: &ratatui::text::Line<'_>) -> String {
+    line.spans.iter().map(|s| s.content.as_ref()).collect()
 }
