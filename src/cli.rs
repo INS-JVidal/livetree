@@ -1,6 +1,9 @@
+//! Command-line argument parsing via `clap` derive.
+
 use clap::Parser;
 use std::path::PathBuf;
 
+/// Parsed command-line arguments for livetree.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "livetree", version, about = "Real-time directory tree watcher")]
 pub struct Args {

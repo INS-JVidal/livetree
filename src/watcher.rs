@@ -1,3 +1,5 @@
+//! Filesystem watcher using `notify-debouncer-full` with crossbeam channels.
+
 use crossbeam_channel::{self, Receiver, Sender};
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
@@ -5,10 +7,14 @@ use notify_debouncer_full::{new_debouncer, Debouncer, RecommendedCache};
 use std::path::Path;
 use std::time::Duration;
 
+/// Events emitted by the filesystem watcher.
 #[derive(Debug)]
 pub enum WatchEvent {
+    /// One or more files/directories changed.
     Changed,
+    /// The watched root directory was deleted.
     RootDeleted,
+    /// A watcher error occurred.
     Error(String),
 }
 

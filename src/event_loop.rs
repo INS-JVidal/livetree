@@ -1,14 +1,70 @@
+//! Main event loop: multiplexes filesystem events and keyboard input.
+
 use crate::render::{format_status_bar, render_tree, RenderConfig};
 use crate::terminal::{buffered_stdout, render_frame, terminal_size};
 use crate::tree::{build_tree, TreeConfig};
 use crate::watcher::WatchEvent;
 use crossbeam_channel::{select, Receiver};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-use std::io::Write;
+use std::io::{BufWriter, Stdout, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
+
+/// Holds mutable state for the application's render loop.
+struct AppState<'a> {
+    writer: BufWriter<Stdout>,
+    prev_line_count: usize,
+    last_change: Option<String>,
+    use_color: bool,
+    path: &'a Path,
+    tree_config: &'a TreeConfig,
+}
+
+impl<'a> AppState<'a> {
+    fn new(path: &'a Path, tree_config: &'a TreeConfig, use_color: bool) -> Self {
+        Self {
+            writer: buffered_stdout(),
+            prev_line_count: 0,
+            last_change: None,
+            use_color,
+            path,
+            tree_config,
+        }
+    }
+
+    /// Rebuild the tree and render a complete frame.
+    fn render(&mut self, terminal_width: u16) {
+        let entries = build_tree(self.path, self.tree_config);
+        let entry_count = entries.len();
+
+        let r_cfg = RenderConfig {
+            use_color: self.use_color,
+            terminal_width,
+        };
+
+        // Render tree lines to a buffer
+        let mut line_buf = Vec::new();
+        let _ = render_tree(&mut line_buf, &entries, &r_cfg);
+        let text = String::from_utf8_lossy(&line_buf);
+        let mut lines: Vec<String> = text.lines().map(String::from).collect();
+
+        // Add status bar
+        let status = format_status_bar(
+            &self.path.to_string_lossy(),
+            entry_count,
+            self.last_change.as_deref(),
+            terminal_width,
+        );
+        lines.push(String::new()); // blank separator line
+        lines.push(status);
+
+        let _ = render_frame(&mut self.writer, &lines, self.prev_line_count);
+        let _ = self.writer.flush();
+        self.prev_line_count = lines.len();
+    }
+}
 
 /// Run the main application loop. Blocks until the user quits.
 pub fn run(
@@ -33,62 +89,11 @@ pub fn run(
         }
     });
 
-    let mut writer = buffered_stdout();
-    let mut prev_line_count: usize = 0;
-    let mut last_change: Option<String> = None;
-
-    // Do initial render
-    let (term_width, _term_height) = terminal_size();
-    let use_color = render_config.use_color;
-
-    let do_render =
-        |writer: &mut std::io::BufWriter<std::io::Stdout>,
-         tree_config: &TreeConfig,
-         render_config_width: u16,
-         use_color: bool,
-         prev_lines: usize,
-         last_change: &Option<String>,
-         path: &Path|
-         -> usize {
-            let entries = build_tree(path, tree_config);
-            let entry_count = entries.len();
-
-            let r_cfg = RenderConfig {
-                use_color,
-                terminal_width: render_config_width,
-            };
-
-            // Render tree lines to a buffer
-            let mut line_buf = Vec::new();
-            render_tree(&mut line_buf, &entries, &r_cfg);
-            let text = String::from_utf8_lossy(&line_buf);
-            let mut lines: Vec<String> = text.lines().map(String::from).collect();
-
-            // Add status bar
-            let status = format_status_bar(
-                &path.to_string_lossy(),
-                entry_count,
-                last_change.as_deref(),
-                render_config_width,
-            );
-            lines.push(String::new()); // blank separator line
-            lines.push(status);
-
-            let _ = render_frame(writer, &lines, prev_lines);
-            let _ = writer.flush();
-            lines.len()
-        };
+    let mut state = AppState::new(path, tree_config, render_config.use_color);
 
     // Initial render
-    prev_line_count = do_render(
-        &mut writer,
-        tree_config,
-        term_width,
-        use_color,
-        prev_line_count,
-        &last_change,
-        path,
-    );
+    let (term_width, _) = terminal_size();
+    state.render(term_width);
 
     // Main event loop
     loop {
@@ -96,27 +101,21 @@ pub fn run(
             recv(fs_rx) -> msg => {
                 match msg {
                     Ok(WatchEvent::Changed) => {
-                        let now = chrono_lite_now();
-                        last_change = Some(now);
-                        let (w, _h) = terminal_size();
-                        prev_line_count = do_render(
-                            &mut writer, tree_config, w, use_color,
-                            prev_line_count, &last_change, path,
-                        );
+                        state.last_change = Some(chrono_lite_now());
+                        let (w, _) = terminal_size();
+                        state.render(w);
                     }
                     Ok(WatchEvent::RootDeleted) => {
-                        // Show message and exit
                         let _ = render_frame(
-                            &mut writer,
+                            &mut state.writer,
                             &[format!("Directory deleted: {}", path.display()),
                               "Exiting...".to_string()],
-                            prev_line_count,
+                            state.prev_line_count,
                         );
-                        let _ = writer.flush();
+                        let _ = state.writer.flush();
                         break;
                     }
                     Ok(WatchEvent::Error(e)) => {
-                        // Show error but continue
                         eprintln!("Watcher error: {}", e);
                     }
                     Err(_) => {
@@ -131,10 +130,7 @@ pub fn run(
                     Ok(Event::Key(KeyEvent { code: KeyCode::Char('c'), modifiers, .. }))
                         if modifiers.contains(KeyModifiers::CONTROL) => break,
                     Ok(Event::Resize(w, _h)) => {
-                        prev_line_count = do_render(
-                            &mut writer, tree_config, w, use_color,
-                            prev_line_count, &last_change, path,
-                        );
+                        state.render(w);
                     }
                     _ => {}
                 }

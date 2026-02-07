@@ -1,3 +1,5 @@
+//! LiveTree — a real-time directory tree watcher with flicker-free terminal rendering.
+
 pub mod cli;
 pub mod event_loop;
 pub mod render;

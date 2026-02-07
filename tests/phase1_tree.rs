@@ -1,33 +1,11 @@
+mod common;
+
+use common::{create_fixture, default_tree_config};
 use livetree::tree::{build_ignore_set, build_ignore_set_no_defaults, build_tree, TreeConfig, TreeEntry};
-use std::fs;
 use tempfile::TempDir;
 
-/// Helper: create a directory structure from a list of relative paths.
-/// Paths ending with '/' create directories; others create empty files.
-fn create_fixture(paths: &[&str]) -> TempDir {
-    let tmp = TempDir::new().unwrap();
-    for p in paths {
-        let full = tmp.path().join(p);
-        if p.ends_with('/') {
-            fs::create_dir_all(&full).unwrap();
-        } else {
-            if let Some(parent) = full.parent() {
-                fs::create_dir_all(parent).unwrap();
-            }
-            fs::write(&full, "").unwrap();
-        }
-    }
-    tmp
-}
-
 fn default_config() -> TreeConfig {
-    TreeConfig {
-        max_depth: None,
-        show_hidden: false,
-        dirs_only: false,
-        follow_symlinks: false,
-        ignore_patterns: build_ignore_set(&[]),
-    }
+    default_tree_config()
 }
 
 // --- Sorting ---

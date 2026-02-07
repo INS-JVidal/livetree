@@ -10,9 +10,12 @@
 //! Run with tracing output:
 //!   RUST_LOG=debug cargo test --test final_integration -- --nocapture
 
-use livetree::render::{format_entry, format_status_bar, render_tree, RenderConfig};
+mod common;
+
+use common::default_tree_config;
+use livetree::render::{format_status_bar, render_tree, RenderConfig};
 use livetree::terminal::render_frame;
-use livetree::tree::{build_ignore_set, build_ignore_set_no_defaults, build_tree, TreeConfig};
+use livetree::tree::{build_ignore_set, build_tree, TreeConfig};
 use livetree::watcher::{start_watcher, WatchEvent};
 use std::fs;
 use std::path::Path;
@@ -35,16 +38,6 @@ fn init_tracing() {
         .with_file(true)
         .with_line_number(true)
         .try_init();
-}
-
-fn default_tree_config() -> TreeConfig {
-    TreeConfig {
-        max_depth: None,
-        show_hidden: false,
-        dirs_only: false,
-        follow_symlinks: false,
-        ignore_patterns: build_ignore_set(&[]),
-    }
 }
 
 /// Create a realistic project fixture.
@@ -158,7 +151,8 @@ fn test_full_lifecycle() {
                 use_color: false,
                 terminal_width: 80,
             },
-        );
+        )
+        .unwrap();
         let output = String::from_utf8(buf).unwrap();
         info!("Rendered tree:\n{}", output);
     }
@@ -300,7 +294,7 @@ fn test_full_lifecycle() {
 
         // Render to string lines
         let mut buf = Vec::new();
-        let line_count = render_tree(&mut buf, &entries, &render_cfg);
+        let line_count = render_tree(&mut buf, &entries, &render_cfg).unwrap();
         let output = String::from_utf8(buf).unwrap();
         let lines: Vec<String> = output.lines().map(String::from).collect();
 
@@ -462,7 +456,8 @@ fn test_performance_large_directory() {
             use_color: true,
             terminal_width: 120,
         },
-    );
+    )
+    .unwrap();
     let render_duration = start.elapsed();
     info!(
         "Render: {} bytes in {:?}",

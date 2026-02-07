@@ -394,7 +394,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-width",
- "wait-timeout",
  "walkdir",
 ]
 

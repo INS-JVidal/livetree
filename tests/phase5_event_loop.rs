@@ -1,17 +1,10 @@
+mod common;
+
+use common::default_tree_config;
 use livetree::render::RenderConfig;
-use livetree::tree::{build_ignore_set, build_tree, TreeConfig};
+use livetree::tree::build_tree;
 use std::time::Duration;
 use tempfile::TempDir;
-
-fn default_tree_config() -> TreeConfig {
-    TreeConfig {
-        max_depth: None,
-        show_hidden: false,
-        dirs_only: false,
-        follow_symlinks: false,
-        ignore_patterns: build_ignore_set(&[]),
-    }
-}
 
 /// Test the core logic: when a filesystem change occurs, rebuild+render
 /// picks up the new state.
@@ -53,7 +46,7 @@ fn test_full_pipeline_build_render_frame() {
 
     // Render to lines
     let mut buf = Vec::new();
-    livetree::render::render_tree(&mut buf, &entries, &rcfg);
+    livetree::render::render_tree(&mut buf, &entries, &rcfg).unwrap();
     let text = String::from_utf8(buf).unwrap();
     let lines: Vec<String> = text.lines().map(String::from).collect();
 

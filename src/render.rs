@@ -1,9 +1,14 @@
+//! ANSI-colored tree rendering and status bar formatting.
+
 use crate::tree::TreeEntry;
 use std::io::Write;
 use unicode_width::UnicodeWidthStr;
 
+/// Configuration for the rendering pipeline.
 pub struct RenderConfig {
+    /// Whether to emit ANSI color codes.
     pub use_color: bool,
+    /// Current terminal width in columns (used for truncation).
     pub terminal_width: u16,
 }
 
@@ -19,14 +24,14 @@ pub fn render_tree<W: Write>(
     writer: &mut W,
     entries: &[TreeEntry],
     config: &RenderConfig,
-) -> usize {
+) -> std::io::Result<usize> {
     let mut count = 0;
     for entry in entries {
         let line = format_entry(entry, config);
-        writeln!(writer, "{}", line).unwrap();
+        writeln!(writer, "{}", line)?;
         count += 1;
     }
-    count
+    Ok(count)
 }
 
 /// Render a single entry to a styled line (with or without ANSI codes).
@@ -70,10 +75,7 @@ fn build_name_part(entry: &TreeEntry, config: &RenderConfig) -> String {
     };
 
     // For symlinks, append " -> target"
-    if entry.is_symlink {
-        let target = std::fs::read_link(&entry.path)
-            .map(|t| t.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "?".to_string());
+    if let Some(ref target) = entry.symlink_target {
         let arrow_part = format!(" -> {}", target);
         if config.use_color {
             format!("{}{}{}{}", CYAN, entry.name, RESET, arrow_part)
@@ -161,7 +163,7 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
     result
 }
 
-/// Render the status bar line.
+/// Render the status bar line, padded or truncated to fit `terminal_width`.
 pub fn format_status_bar(
     watched_path: &str,
     entry_count: usize,

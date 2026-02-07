@@ -1,32 +1,15 @@
+mod common;
+
+use common::{color_render_config, make_entry, no_color_render_config, strip_ansi};
 use livetree::render::{format_entry, format_status_bar, render_tree, RenderConfig};
 use livetree::tree::TreeEntry;
-use std::path::PathBuf;
 
 fn no_color_config() -> RenderConfig {
-    RenderConfig {
-        use_color: false,
-        terminal_width: 120,
-    }
+    no_color_render_config(120)
 }
 
 fn color_config() -> RenderConfig {
-    RenderConfig {
-        use_color: true,
-        terminal_width: 120,
-    }
-}
-
-fn make_entry(name: &str, depth: usize, is_dir: bool, is_symlink: bool, is_last: bool, prefix: &str, error: Option<&str>) -> TreeEntry {
-    TreeEntry {
-        name: name.to_string(),
-        path: PathBuf::from(format!("/tmp/test/{}", name)),
-        depth,
-        is_dir,
-        is_symlink,
-        is_last,
-        prefix: prefix.to_string(),
-        error: error.map(|s| s.to_string()),
-    }
+    color_render_config(120)
 }
 
 // --- Test 1: Plain file (no color) ---
@@ -72,10 +55,15 @@ fn test_format_entry_symlink_with_color() {
 
     let entry = TreeEntry {
         name: "link.txt".to_string(),
-        path: link_path,
+        path: link_path.clone(),
         depth: 1,
         is_dir: false,
         is_symlink: true,
+        symlink_target: Some(
+            std::fs::read_link(&link_path)
+                .map(|t| t.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "?".to_string()),
+        ),
         is_last: true,
         prefix: "\u{2514}\u{2500}\u{2500} ".to_string(),
         error: None,
@@ -128,7 +116,7 @@ fn test_format_entry_long_name_truncation() {
     let line = format_entry(&entry, &config);
 
     // Strip ANSI codes for width measurement
-    let plain = strip_ansi_codes(&line);
+    let plain = strip_ansi(&line);
     let display_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
     assert!(
         display_width <= 40,
@@ -153,7 +141,7 @@ fn test_render_tree_normal() {
     ];
     let config = no_color_config();
     let mut output = Vec::new();
-    let count = render_tree(&mut output, &entries, &config);
+    let count = render_tree(&mut output, &entries, &config).unwrap();
 
     assert_eq!(count, 3, "Should have written 3 lines");
     let text = String::from_utf8(output).unwrap();
@@ -168,7 +156,7 @@ fn test_render_tree_empty() {
     let entries: Vec<TreeEntry> = Vec::new();
     let config = no_color_config();
     let mut output = Vec::new();
-    let count = render_tree(&mut output, &entries, &config);
+    let count = render_tree(&mut output, &entries, &config).unwrap();
 
     assert_eq!(count, 0, "Empty tree should produce 0 lines");
     assert!(output.is_empty(), "Output should be empty for empty tree");
@@ -211,7 +199,7 @@ fn test_format_status_bar_no_change() {
 fn test_format_status_bar_long_path() {
     let long_path = "/home/user/".to_string() + &"very_long_directory_name/".repeat(20);
     let bar = format_status_bar(&long_path, 100, Some("12:00:00"), 60);
-    let plain = strip_ansi_codes(&bar);
+    let plain = strip_ansi(&bar);
     let display_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
     assert!(
         display_width <= 60,
@@ -221,22 +209,3 @@ fn test_format_status_bar_long_path() {
     );
 }
 
-/// Helper to strip ANSI escape sequences for width calculations.
-fn strip_ansi_codes(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut in_escape = false;
-    for ch in s.chars() {
-        if in_escape {
-            if ch.is_ascii_alphabetic() {
-                in_escape = false;
-            }
-            continue;
-        }
-        if ch == '\x1b' {
-            in_escape = true;
-            continue;
-        }
-        result.push(ch);
-    }
-    result
-}

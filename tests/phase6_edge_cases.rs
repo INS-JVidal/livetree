@@ -1,24 +1,18 @@
+mod common;
+
+use common::{default_tree_config, no_color_render_config, strip_ansi};
 use livetree::render::{format_entry, render_tree, RenderConfig};
-use livetree::tree::{build_ignore_set, build_ignore_set_no_defaults, build_tree, TreeConfig, TreeEntry};
+use livetree::tree::{build_ignore_set, build_tree, TreeConfig, TreeEntry};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
 fn default_config() -> TreeConfig {
-    TreeConfig {
-        max_depth: None,
-        show_hidden: false,
-        dirs_only: false,
-        follow_symlinks: false,
-        ignore_patterns: build_ignore_set(&[]),
-    }
+    default_tree_config()
 }
 
 fn no_color(width: u16) -> RenderConfig {
-    RenderConfig {
-        use_color: false,
-        terminal_width: width,
-    }
+    no_color_render_config(width)
 }
 
 // --- Permission Denied ---
@@ -88,6 +82,7 @@ fn test_very_narrow_terminal() {
         depth: 1,
         is_dir: false,
         is_symlink: false,
+        symlink_target: None,
         is_last: true,
         prefix: "\u{2514}\u{2500}\u{2500} ".to_string(),
         error: None,
@@ -116,6 +111,7 @@ fn test_terminal_width_1() {
         depth: 1,
         is_dir: false,
         is_symlink: false,
+        symlink_target: None,
         is_last: true,
         prefix: "\u{2514}\u{2500}\u{2500} ".to_string(),
         error: None,
@@ -134,7 +130,7 @@ fn test_empty_root_directory() {
     let entries = build_tree(tmp.path(), &default_config());
 
     let mut buf = Vec::new();
-    let count = render_tree(&mut buf, &entries, &no_color(80));
+    let count = render_tree(&mut buf, &entries, &no_color(80)).unwrap();
     assert!(count <= 1, "Empty dir should produce at most 1 line");
 }
 
@@ -188,6 +184,7 @@ fn test_render_at_various_widths() {
         depth: 1,
         is_dir: false,
         is_symlink: false,
+        symlink_target: None,
         is_last: true,
         prefix: "\u{2514}\u{2500}\u{2500} ".to_string(),
         error: None,
@@ -197,7 +194,7 @@ fn test_render_at_various_widths() {
     for width in [1, 5, 10, 20, 40, 80, 120, 200] {
         let cfg = no_color(width);
         let mut buf = Vec::new();
-        render_tree(&mut buf, &[entry.clone()], &cfg);
+        render_tree(&mut buf, &[entry.clone()], &cfg).unwrap();
         // Just verify no panic
     }
 }
@@ -241,7 +238,7 @@ fn test_large_directory_performance() {
 
     let start = std::time::Instant::now();
     let mut buf = Vec::new();
-    render_tree(&mut buf, &entries, &no_color(80));
+    render_tree(&mut buf, &entries, &no_color(80)).unwrap();
     let render_time = start.elapsed();
 
     assert!(
@@ -251,22 +248,3 @@ fn test_large_directory_performance() {
     );
 }
 
-/// Helper to strip ANSI escape sequences.
-fn strip_ansi(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut in_escape = false;
-    for ch in s.chars() {
-        if in_escape {
-            if ch.is_ascii_alphabetic() {
-                in_escape = false;
-            }
-            continue;
-        }
-        if ch == '\x1b' {
-            in_escape = true;
-            continue;
-        }
-        result.push(ch);
-    }
-    result
-}
