@@ -165,7 +165,7 @@ fn test_render_tree_empty() {
 // --- Test 8: format_status_bar with timestamp ---
 #[test]
 fn test_format_status_bar_with_timestamp() {
-    let bar = format_status_bar("/home/user/project", 42, Some("14:30:05"), 80);
+    let bar = format_status_bar("/home/user/project", "42 entries", Some("14:30:05"), 80);
     assert!(
         bar.contains("Watching: /home/user/project"),
         "Should contain watched path. Got: {:?}",
@@ -186,7 +186,7 @@ fn test_format_status_bar_with_timestamp() {
 // --- Test 9: format_status_bar with no change ---
 #[test]
 fn test_format_status_bar_no_change() {
-    let bar = format_status_bar("/tmp/test", 10, None, 80);
+    let bar = format_status_bar("/tmp/test", "10 entries", None, 80);
     assert!(
         bar.contains("No changes yet"),
         "Should show 'No changes yet'. Got: {:?}",
@@ -198,7 +198,7 @@ fn test_format_status_bar_no_change() {
 #[test]
 fn test_format_status_bar_long_path() {
     let long_path = "/home/user/".to_string() + &"very_long_directory_name/".repeat(20);
-    let bar = format_status_bar(&long_path, 100, Some("12:00:00"), 60);
+    let bar = format_status_bar(&long_path, "100 entries", Some("12:00:00"), 60);
     let plain = strip_ansi(&bar);
     let display_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
     assert!(

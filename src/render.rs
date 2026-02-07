@@ -166,7 +166,7 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
 /// Render the status bar line, padded or truncated to fit `terminal_width`.
 pub fn format_status_bar(
     watched_path: &str,
-    entry_count: usize,
+    entry_info: &str,
     last_change: Option<&str>,
     terminal_width: u16,
 ) -> String {
@@ -176,8 +176,8 @@ pub fn format_status_bar(
     };
 
     let bar = format!(
-        " Watching: {}  |  {} entries  |  {}",
-        watched_path, entry_count, change_text
+        " Watching: {}  |  {}  |  {}",
+        watched_path, entry_info, change_text
     );
 
     let width = terminal_width as usize;

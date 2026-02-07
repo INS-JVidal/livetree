@@ -315,7 +315,7 @@ fn test_full_lifecycle() {
         // Status bar
         let bar = format_status_bar(
             &render_tmp.path().to_string_lossy(),
-            line_count,
+            &format!("{} entries", line_count),
             Some("12:34:56"),
             80,
         );

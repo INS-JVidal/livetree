@@ -35,7 +35,7 @@ impl<'a> AppState<'a> {
     }
 
     /// Rebuild the tree and render a complete frame.
-    fn render(&mut self, terminal_width: u16) {
+    fn render(&mut self, terminal_width: u16, terminal_height: u16) {
         let entries = build_tree(self.path, self.tree_config);
         let entry_count = entries.len();
 
@@ -48,12 +48,24 @@ impl<'a> AppState<'a> {
         let mut line_buf = Vec::new();
         let _ = render_tree(&mut line_buf, &entries, &r_cfg);
         let text = String::from_utf8_lossy(&line_buf);
-        let mut lines: Vec<String> = text.lines().map(String::from).collect();
+        let tree_lines: Vec<String> = text.lines().map(String::from).collect();
+
+        // Reserve 2 rows for blank separator + status bar
+        let max_tree_lines = (terminal_height as usize).saturating_sub(2);
+        let truncated = tree_lines.len() > max_tree_lines;
+        let visible_tree: Vec<String> = tree_lines.into_iter().take(max_tree_lines).collect();
+
+        let mut lines = visible_tree;
 
         // Add status bar
+        let display_count = if truncated {
+            format!("{} entries ({} shown)", entry_count, lines.len())
+        } else {
+            format!("{} entries", entry_count)
+        };
         let status = format_status_bar(
             &self.path.to_string_lossy(),
-            entry_count,
+            &display_count,
             self.last_change.as_deref(),
             terminal_width,
         );
@@ -92,8 +104,8 @@ pub fn run(
     let mut state = AppState::new(path, tree_config, render_config.use_color);
 
     // Initial render
-    let (term_width, _) = terminal_size();
-    state.render(term_width);
+    let (term_width, term_height) = terminal_size();
+    state.render(term_width, term_height);
 
     // Main event loop
     loop {
@@ -102,8 +114,8 @@ pub fn run(
                 match msg {
                     Ok(WatchEvent::Changed) => {
                         state.last_change = Some(chrono_lite_now());
-                        let (w, _) = terminal_size();
-                        state.render(w);
+                        let (w, h) = terminal_size();
+                        state.render(w, h);
                     }
                     Ok(WatchEvent::RootDeleted) => {
                         let _ = render_frame(
@@ -129,8 +141,8 @@ pub fn run(
                     Ok(Event::Key(KeyEvent { code: KeyCode::Char('q'), .. })) => break,
                     Ok(Event::Key(KeyEvent { code: KeyCode::Char('c'), modifiers, .. }))
                         if modifiers.contains(KeyModifiers::CONTROL) => break,
-                    Ok(Event::Resize(w, _h)) => {
-                        state.render(w);
+                    Ok(Event::Resize(w, h)) => {
+                        state.render(w, h);
                     }
                     _ => {}
                 }
