@@ -1,6 +1,6 @@
 //! Terminal management: raw mode RAII guard, frame rendering, and panic hook.
 
-use crossterm::{cursor, queue, terminal};
+use crossterm::{cursor, execute, queue, terminal};
 use std::io::{self, Stdout, Write};
 
 /// RAII guard that restores terminal state on drop (even on panic).
@@ -9,12 +9,10 @@ pub struct TerminalGuard {
 }
 
 impl TerminalGuard {
-    /// Enter alternate screen, raw mode, and hide the cursor. Returns the guard.
+    /// Enter raw mode and hide the cursor. Returns the guard.
     pub fn new() -> io::Result<Self> {
-        let mut stdout = io::stdout();
-        queue!(stdout, terminal::EnterAlternateScreen, cursor::Hide)?;
-        stdout.flush()?;
         terminal::enable_raw_mode()?;
+        execute!(io::stdout(), cursor::Hide)?;
         Ok(TerminalGuard { _private: () })
     }
 }
@@ -22,9 +20,12 @@ impl TerminalGuard {
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();
-        let mut stdout = io::stdout();
-        let _ = queue!(stdout, cursor::Show, terminal::LeaveAlternateScreen);
-        let _ = stdout.flush();
+        let _ = execute!(
+            io::stdout(),
+            cursor::MoveTo(0, 0),
+            terminal::Clear(terminal::ClearType::All),
+            cursor::Show,
+        );
     }
 }
 
@@ -34,9 +35,12 @@ pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = terminal::disable_raw_mode();
-        let mut stdout = io::stdout();
-        let _ = queue!(stdout, cursor::Show, terminal::LeaveAlternateScreen);
-        let _ = stdout.flush();
+        let _ = execute!(
+            io::stdout(),
+            cursor::MoveTo(0, 0),
+            terminal::Clear(terminal::ClearType::All),
+            cursor::Show,
+        );
         default_hook(info);
     }));
 }

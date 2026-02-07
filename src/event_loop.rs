@@ -138,6 +138,9 @@ pub fn run(
         }
     }
 
+    // Flush any remaining output before the TerminalGuard drops
+    let _ = state.writer.flush();
+
     // Signal shutdown to input thread and wait
     shutdown.store(true, Ordering::Relaxed);
     let _ = input_handle.join();
