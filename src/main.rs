@@ -52,13 +52,8 @@ fn main() {
     });
 
     // Run the main event loop (blocks until quit)
-    let result = event_loop::run(term, &path, &tree_config, &render_config, fs_rx);
+    event_loop::run(term, &path, &tree_config, &render_config, fs_rx);
 
     // Restore terminal state
     terminal::restore();
-
-    if let Err(e) = result {
-        eprintln!("livetree: {}", e);
-        std::process::exit(1);
-    }
 }

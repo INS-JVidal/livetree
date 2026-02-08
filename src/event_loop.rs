@@ -4,7 +4,7 @@
 use crate::highlight::HighlightTracker;
 use crate::render::{help_bar_line, status_bar_line, tree_to_lines, RenderConfig};
 use crate::terminal::Term;
-use crate::tree::{build_tree, TreeConfig};
+use crate::tree::{build_tree, TreeConfig, TreeEntry};
 use crate::watcher::WatchEvent;
 use crossbeam_channel::{select, Receiver};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -29,6 +29,8 @@ struct AppState<'a> {
     total_lines: usize,
     /// Tracks recently changed paths with per-entry expiration.
     highlights: HighlightTracker,
+    /// Cached tree entries; invalidated on WatchEvent::Changed to avoid rebuild on every key.
+    tree_cache: Option<Vec<TreeEntry>>,
 }
 
 impl<'a> AppState<'a> {
@@ -42,16 +44,20 @@ impl<'a> AppState<'a> {
             tree_config,
             total_lines: 0,
             highlights: HighlightTracker::new(),
+            tree_cache: None,
         }
     }
 
-    /// Rebuild the tree and render a complete frame via ratatui.
+    /// Rebuild the tree (if cache invalidated) and render a complete frame via ratatui.
     fn render(&mut self) {
         // Prune expired highlights and get the active set
         let now = Instant::now();
         let active_highlights = self.highlights.active_set(now);
 
-        let entries = build_tree(self.path, self.tree_config);
+        if self.tree_cache.is_none() {
+            self.tree_cache = Some(build_tree(self.path, self.tree_config));
+        }
+        let entries = self.tree_cache.as_ref().unwrap();
         let entry_count = entries.len();
 
         let (term_width, area_height) = self
@@ -172,7 +178,7 @@ pub fn run(
     tree_config: &TreeConfig,
     render_config: &RenderConfig,
     fs_rx: Receiver<WatchEvent>,
-) -> Result<(), String> {
+) {
     let shutdown = Arc::new(AtomicBool::new(false));
 
     // Spawn keyboard input reader
@@ -200,6 +206,7 @@ pub fn run(
                 match msg {
                     Ok(WatchEvent::Changed(paths)) => {
                         state.last_change = Some(chrono_lite_now());
+                        state.tree_cache = None; // invalidate so render() rebuilds tree
                         // Only highlight files, not directories (inotify
                         // reports parent dirs when their children change).
                         let now = Instant::now();
@@ -275,9 +282,9 @@ pub fn run(
 
     // Signal shutdown to input thread and wait
     shutdown.store(true, Ordering::Relaxed);
-    let _ = input_handle.join();
-
-    Ok(())
+    if let Err(e) = input_handle.join() {
+        std::panic::resume_unwind(e);
+    }
 }
 
 /// Simple timestamp without pulling in chrono.

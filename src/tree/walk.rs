@@ -11,19 +11,34 @@ pub(super) type RawEntry = (usize, String, PathBuf, bool, bool, Option<String>, 
 const DEFAULT_IGNORES: &[&str] = &[".git", "node_modules", "__pycache__", ".DS_Store"];
 
 /// Build a GlobSet from user patterns plus the default ignore list.
+/// Invalid patterns are skipped and reported to stderr.
 pub fn build_ignore_set(user_patterns: &[String]) -> GlobSet {
     let mut builder = GlobSetBuilder::new();
+    let mut invalid = Vec::new();
     for pattern in DEFAULT_IGNORES {
         if let Ok(g) = Glob::new(pattern) {
             builder.add(g);
         }
     }
     for pattern in user_patterns {
-        if let Ok(g) = Glob::new(pattern) {
-            builder.add(g);
+        match Glob::new(pattern) {
+            Ok(g) => {
+                builder.add(g);
+            }
+            Err(_) => {
+                invalid.push(pattern.clone());
+            }
         }
     }
-    builder.build().unwrap_or_else(|_| GlobSet::empty())
+    if !invalid.is_empty() {
+        eprintln!("livetree: invalid ignore pattern(s), skipped: {:?}", invalid);
+    }
+    builder
+        .build()
+        .unwrap_or_else(|e| {
+            eprintln!("livetree: failed to build ignore set: {}", e);
+            GlobSet::empty()
+        })
 }
 
 /// Build the tree from a root path.
@@ -42,6 +57,7 @@ pub fn build_tree(root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
 
     let show_hidden = config.show_hidden;
     let ignore_patterns = config.ignore_patterns.clone();
+    let root = root.to_path_buf();
     let iter = walker.into_iter().filter_entry(move |entry| {
         let name = entry.file_name().to_string_lossy();
         // Always allow root
@@ -52,8 +68,12 @@ pub fn build_tree(root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
         if !show_hidden && name.starts_with('.') {
             return false;
         }
-        // Filter ignored patterns (prevents descending into node_modules, etc.)
-        if ignore_patterns.is_match(name.as_ref()) {
+        // Filter ignored patterns: match path relative to root so e.g. "target/**" works
+        let path_to_match = entry
+            .path()
+            .strip_prefix(&root)
+            .unwrap_or_else(|_| entry.path());
+        if ignore_patterns.is_match(path_to_match) {
             return false;
         }
         true

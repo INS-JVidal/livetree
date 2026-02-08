@@ -120,7 +120,7 @@ pub fn status_bar_line(
 
 /// Build a help bar `Line` showing available keyboard shortcuts.
 pub fn help_bar_line() -> Line<'static> {
-    let text = " q: Sortir  |  r: Reset  |  ↑↓/jk: Scroll  |  PgUp/PgDn: Pàgina  |  Home/End";
+    let text = " q: Quit  |  r: Reset  |  ↑↓/jk: Scroll  |  PgUp/PgDn: Page  |  Home/End";
     let style = Style::new().fg(Color::DarkGray);
     Line::from(Span::styled(text.to_string(), style))
 }

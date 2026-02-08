@@ -5,6 +5,7 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, Debouncer, RecommendedCache};
 use std::collections::HashSet;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -38,17 +39,23 @@ pub fn start_watcher(
         move |result: Result<Vec<notify_debouncer_full::DebouncedEvent>, Vec<notify::Error>>| {
             match result {
                 Ok(events) => {
-                    // Check if root path still exists
-                    if std::fs::metadata(&root_path).is_err() {
-                        let _ = tx.send(WatchEvent::RootDeleted);
-                    } else {
-                        let paths: Vec<PathBuf> = events
-                            .iter()
-                            .flat_map(|e| e.paths.iter().cloned())
-                            .collect::<HashSet<_>>()
-                            .into_iter()
-                            .collect();
-                        let _ = tx.send(WatchEvent::Changed(paths));
+                    // Only treat as root deleted when metadata says "not found"
+                    match std::fs::metadata(&root_path) {
+                        Ok(_) => {
+                            let paths: Vec<PathBuf> = events
+                                .iter()
+                                .flat_map(|e| e.paths.iter().cloned())
+                                .collect::<HashSet<_>>()
+                                .into_iter()
+                                .collect();
+                            let _ = tx.send(WatchEvent::Changed(paths));
+                        }
+                        Err(e) if e.kind() == ErrorKind::NotFound => {
+                            let _ = tx.send(WatchEvent::RootDeleted);
+                        }
+                        Err(e) => {
+                            let _ = tx.send(WatchEvent::Error(format!("{}", e)));
+                        }
                     }
                 }
                 Err(errors) => {
