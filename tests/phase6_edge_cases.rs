@@ -1,7 +1,7 @@
 mod common;
 
-use common::{default_tree_config, line_to_text, no_color_render_config};
-use livetree::render::{tree_to_lines, RenderConfig};
+use common::{default_tree_config, no_color_render_config};
+use livetree::render::{line_to_plain_text, tree_to_lines, RenderConfig};
 use livetree::tree::{build_tree, TreeConfig, TreeEntry};
 use std::collections::HashSet;
 use std::fs;
@@ -93,7 +93,7 @@ fn test_very_narrow_terminal() {
     let lines = tree_to_lines(&[entry], &cfg, &HashSet::new());
     // ratatui handles truncation at render time, so just verify no panic
     assert_eq!(lines.len(), 1);
-    let text = line_to_text(&lines[0]);
+    let text = line_to_plain_text(&lines[0]);
     assert!(
         !text.is_empty(),
         "Should produce non-empty output even for narrow terminal"
@@ -166,7 +166,7 @@ fn test_symlink_to_file_shows_arrow() {
 
     let cfg = no_color(120);
     let lines = tree_to_lines(&[link.clone()], &cfg, &HashSet::new());
-    let text = line_to_text(&lines[0]);
+    let text = line_to_plain_text(&lines[0]);
     assert!(
         text.contains("->"),
         "Symlink should show target: {:?}",
@@ -245,4 +245,30 @@ fn test_large_directory_performance() {
         "Rendering 500 entries should be fast. Took {:?}",
         render_time
     );
+}
+
+// --- Terminal Height = 1 (extreme edge case) ---
+
+#[test]
+fn test_terminal_height_1_renders_without_panic() {
+    // Simulates rendering a tree that's taller than a 1-row terminal.
+    // The actual clamping to terminal height happens in event_loop,
+    // but tree_to_lines must not panic regardless of how many entries exist.
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir(tmp.path().join("a")).unwrap();
+    fs::write(tmp.path().join("a/file.txt"), "").unwrap();
+    fs::write(tmp.path().join("b.txt"), "").unwrap();
+
+    let entries = build_tree(tmp.path(), &default_config());
+    assert!(entries.len() >= 2, "Should have multiple entries");
+
+    let cfg = no_color(80);
+    let lines = tree_to_lines(&entries, &cfg, &HashSet::new());
+    assert_eq!(lines.len(), entries.len());
+
+    // Verify each line has content
+    for line in &lines {
+        let text = line_to_plain_text(line);
+        assert!(!text.is_empty(), "Each line should have content");
+    }
 }

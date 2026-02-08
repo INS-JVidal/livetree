@@ -83,10 +83,6 @@ fn create_project_fixture(root: &Path) {
     );
 }
 
-/// Extract plain text from a Line.
-fn line_text(line: &ratatui::text::Line<'_>) -> String {
-    line.spans.iter().map(|s| s.content.as_ref()).collect()
-}
 
 // ───────────────────────────────────────────────────
 // Test 1: Full Lifecycle
@@ -156,7 +152,7 @@ fn test_full_lifecycle() {
             },
             &HashSet::new(),
         );
-        let output: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
+        let output: String = lines.iter().map(|l| line_to_plain_text(l)).collect::<Vec<_>>().join("\n");
         info!("Rendered tree:\n{}", output);
     }
 
@@ -301,7 +297,7 @@ fn test_full_lifecycle() {
 
         assert!(lines.len() >= 3, "Should have at least 3 lines");
 
-        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
+        let all_text: String = lines.iter().map(|l| line_to_plain_text(l)).collect::<Vec<_>>().join("\n");
         assert!(all_text.contains("src"));
         assert!(all_text.contains("main.rs"));
         assert!(all_text.contains("README.md"));
@@ -312,7 +308,6 @@ fn test_full_lifecycle() {
             &render_tmp.path().to_string_lossy(),
             &format!("{} entries", lines.len()),
             Some("12:34:56"),
-            80,
         );
         let bar_text = line_to_plain_text(&bar);
         assert!(bar_text.contains("entries"));

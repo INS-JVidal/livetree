@@ -6,7 +6,7 @@ pub(crate) mod walk;
 use globset::GlobSet;
 use std::path::PathBuf;
 
-pub use walk::{build_ignore_set, build_ignore_set_no_defaults, build_tree};
+pub use walk::{build_ignore_set, build_tree};
 
 /// A single entry in the rendered directory tree.
 #[derive(Debug, Clone, PartialEq)]

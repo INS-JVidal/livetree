@@ -1,5 +1,6 @@
 use livetree::watcher::{start_watcher, WatchEvent};
 use std::fs;
+use std::path::PathBuf;
 use std::time::Duration;
 use tempfile::TempDir;
 
@@ -159,4 +160,28 @@ fn test_watcher_nonexistent_path_returns_error() {
         result.is_err(),
         "Expected Err for nonexistent path, got Ok"
     );
+}
+
+#[test]
+fn test_watcher_changed_paths_contain_created_file() {
+    let dir = TempDir::new().unwrap();
+    let (_watcher, rx) = start_watcher(dir.path(), 100).unwrap();
+
+    std::thread::sleep(Duration::from_millis(200));
+
+    let target = dir.path().join("tracked.txt");
+    fs::write(&target, b"content").unwrap();
+
+    let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    match event {
+        WatchEvent::Changed(paths) => {
+            let path_set: std::collections::HashSet<PathBuf> = paths.into_iter().collect();
+            assert!(
+                path_set.contains(&target),
+                "Changed paths should contain the created file. Got: {:?}",
+                path_set
+            );
+        }
+        other => panic!("Expected Changed, got {:?}", other),
+    }
 }

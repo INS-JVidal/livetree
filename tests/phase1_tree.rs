@@ -1,7 +1,8 @@
 mod common;
 
 use common::{create_fixture, default_tree_config};
-use livetree::tree::{build_ignore_set, build_ignore_set_no_defaults, build_tree, TreeConfig, TreeEntry};
+use globset::GlobSet;
+use livetree::tree::{build_ignore_set, build_tree, TreeConfig, TreeEntry};
 use tempfile::TempDir;
 
 fn default_config() -> TreeConfig {
@@ -60,8 +61,8 @@ fn test_dotfiles_shown_with_all_flag() {
     let tmp = create_fixture(&[".hidden", "visible.txt"]);
     let mut cfg = default_config();
     cfg.show_hidden = true;
-    // Use no-defaults to avoid .hidden being caught by default ignores
-    cfg.ignore_patterns = build_ignore_set_no_defaults(&[]);
+    // Use empty GlobSet to avoid .hidden being caught by default ignores
+    cfg.ignore_patterns = GlobSet::empty();
     let entries = build_tree(tmp.path(), &cfg);
     let names: Vec<&str> = entries
         .iter()

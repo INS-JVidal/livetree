@@ -2,6 +2,7 @@
 
 pub mod cli;
 pub mod event_loop;
+pub mod highlight;
 pub mod render;
 pub mod terminal;
 pub mod tree;

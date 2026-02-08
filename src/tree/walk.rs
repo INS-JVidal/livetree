@@ -26,17 +26,6 @@ pub fn build_ignore_set(user_patterns: &[String]) -> GlobSet {
     builder.build().unwrap_or_else(|_| GlobSet::empty())
 }
 
-/// Build a GlobSet from only user patterns (no defaults).
-pub fn build_ignore_set_no_defaults(user_patterns: &[String]) -> GlobSet {
-    let mut builder = GlobSetBuilder::new();
-    for pattern in user_patterns {
-        if let Ok(g) = Glob::new(pattern) {
-            builder.add(g);
-        }
-    }
-    builder.build().unwrap_or_else(|_| GlobSet::empty())
-}
-
 /// Build the tree from a root path.
 pub fn build_tree(root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
     let mut walker = WalkDir::new(root)

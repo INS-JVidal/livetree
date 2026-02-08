@@ -99,7 +99,6 @@ pub fn status_bar_line(
     watched_path: &str,
     entry_info: &str,
     last_change: Option<&str>,
-    _width: u16,
 ) -> Line<'static> {
     let change_text = match last_change {
         Some(ts) => format!("Last change: {}", ts),

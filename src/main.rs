@@ -1,5 +1,6 @@
 mod cli;
 mod event_loop;
+mod highlight;
 mod render;
 mod terminal;
 mod tree;

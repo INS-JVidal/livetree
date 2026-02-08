@@ -4,6 +4,7 @@ use crossbeam_channel::{self, Receiver, Sender};
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, Debouncer, RecommendedCache};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -44,6 +45,8 @@ pub fn start_watcher(
                         let paths: Vec<PathBuf> = events
                             .iter()
                             .flat_map(|e| e.paths.iter().cloned())
+                            .collect::<HashSet<_>>()
+                            .into_iter()
                             .collect();
                         let _ = tx.send(WatchEvent::Changed(paths));
                     }

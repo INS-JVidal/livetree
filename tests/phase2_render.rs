@@ -1,6 +1,6 @@
 mod common;
 
-use common::{color_render_config, line_to_text, make_entry, no_color_render_config};
+use common::{color_render_config, make_entry, no_color_render_config};
 use livetree::render::{help_bar_line, line_to_plain_text, status_bar_line, tree_to_lines, RenderConfig};
 use livetree::tree::TreeEntry;
 use ratatui::style::{Color, Modifier};
@@ -22,7 +22,7 @@ fn test_tree_to_lines_plain_file_no_color() {
     let config = no_color_config();
     let lines = tree_to_lines(&[entry], &config, &HashSet::new());
     assert_eq!(lines.len(), 1);
-    let text = line_to_text(&lines[0]);
+    let text = line_to_plain_text(&lines[0]);
     assert_eq!(text, "\u{2514}\u{2500}\u{2500} hello.txt");
 }
 
@@ -94,7 +94,7 @@ fn test_tree_to_lines_symlink_with_color() {
     );
 
     // Check arrow target is present
-    let text = line_to_text(line);
+    let text = line_to_plain_text(line);
     assert!(
         text.contains(" -> "),
         "Symlink should show arrow to target. Got: {:?}",
@@ -118,7 +118,7 @@ fn test_tree_to_lines_error_with_color() {
         "Error should be red"
     );
 
-    let text = line_to_text(line);
+    let text = line_to_plain_text(line);
     assert!(
         text.contains("Permission denied"),
         "Should contain error text. Got: {:?}",
@@ -138,7 +138,7 @@ fn test_tree_to_lines_normal() {
     let lines = tree_to_lines(&entries, &config, &HashSet::new());
 
     assert_eq!(lines.len(), 3, "Should have 3 lines");
-    let texts: Vec<String> = lines.iter().map(line_to_text).collect();
+    let texts: Vec<String> = lines.iter().map(line_to_plain_text).collect();
     assert!(texts[0].contains("src"), "First line should contain 'src'");
     assert!(texts[1].contains("main.rs"), "Second line should contain 'main.rs'");
     assert!(texts[2].contains("README.md"), "Third line should contain 'README.md'");
@@ -156,7 +156,7 @@ fn test_tree_to_lines_empty() {
 // --- Test 7: status_bar_line with timestamp ---
 #[test]
 fn test_status_bar_line_with_timestamp() {
-    let bar = status_bar_line("/home/user/project", "42 entries", Some("14:30:05"), 80);
+    let bar = status_bar_line("/home/user/project", "42 entries", Some("14:30:05"));
     let text = line_to_plain_text(&bar);
     assert!(
         text.contains("Watching: /home/user/project"),
@@ -178,7 +178,7 @@ fn test_status_bar_line_with_timestamp() {
 // --- Test 8: status_bar_line with no change ---
 #[test]
 fn test_status_bar_line_no_change() {
-    let bar = status_bar_line("/tmp/test", "10 entries", None, 80);
+    let bar = status_bar_line("/tmp/test", "10 entries", None);
     let text = line_to_plain_text(&bar);
     assert!(
         text.contains("No changes yet"),
@@ -190,7 +190,7 @@ fn test_status_bar_line_no_change() {
 // --- Test 9: status_bar_line has styling ---
 #[test]
 fn test_status_bar_line_has_style() {
-    let bar = status_bar_line("/tmp/test", "10 entries", None, 80);
+    let bar = status_bar_line("/tmp/test", "10 entries", None);
     let span = &bar.spans[0];
     assert_eq!(span.style.fg, Some(Color::White), "Status bar should have white text");
     assert_eq!(span.style.bg, Some(Color::DarkGray), "Status bar should have dark gray background");
@@ -261,6 +261,26 @@ fn test_help_bar_line_has_style() {
     let bar = help_bar_line();
     let span = &bar.spans[0];
     assert_eq!(span.style.fg, Some(Color::DarkGray), "Help bar should have DarkGray text");
+}
+
+// --- Test: Changed entry with use_color=false gets no highlight ---
+#[test]
+fn test_changed_entry_no_color_ignores_highlight() {
+    let entry = make_entry("modified.txt", 1, false, false, true, "└── ", None);
+    let config = no_color_config();
+    let changed: HashSet<PathBuf> = [entry.path.clone()].into_iter().collect();
+    let lines = tree_to_lines(&[entry], &config, &changed);
+    let line = &lines[0];
+
+    // With color disabled, all spans should have default (no) style
+    for span in &line.spans {
+        assert_eq!(
+            span.style,
+            ratatui::style::Style::default(),
+            "With use_color=false, span '{}' should have default style",
+            span.content
+        );
+    }
 }
 
 // --- Test 12: Unchanged entry is unaffected by changed_paths ---

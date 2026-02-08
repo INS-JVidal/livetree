@@ -1,6 +1,7 @@
 //! Main event loop: multiplexes filesystem events and keyboard input,
 //! rendering via ratatui's immediate-mode draw loop.
 
+use crate::highlight::HighlightTracker;
 use crate::render::{help_bar_line, status_bar_line, tree_to_lines, RenderConfig};
 use crate::terminal::Term;
 use crate::tree::{build_tree, TreeConfig};
@@ -10,15 +11,11 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::layout::{Constraint, Layout};
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
-
-/// How long a per-file highlight stays visible.
-const HIGHLIGHT_DURATION: Duration = Duration::from_secs(3);
+use std::time::Instant;
 
 /// Holds mutable state for the application's render loop.
 struct AppState<'a> {
@@ -30,8 +27,8 @@ struct AppState<'a> {
     tree_config: &'a TreeConfig,
     /// Total number of tree lines (for scroll clamping).
     total_lines: usize,
-    /// Paths changed in recent filesystem events, each with its own insertion time.
-    changed_paths: HashMap<PathBuf, Instant>,
+    /// Tracks recently changed paths with per-entry expiration.
+    highlights: HighlightTracker,
 }
 
 impl<'a> AppState<'a> {
@@ -44,32 +41,32 @@ impl<'a> AppState<'a> {
             path,
             tree_config,
             total_lines: 0,
-            changed_paths: HashMap::new(),
+            highlights: HighlightTracker::new(),
         }
     }
 
     /// Rebuild the tree and render a complete frame via ratatui.
     fn render(&mut self) {
-        // Remove per-file expired highlights
+        // Prune expired highlights and get the active set
         let now = Instant::now();
-        self.changed_paths.retain(|_, inserted| now.duration_since(*inserted) < HIGHLIGHT_DURATION);
-
-        // Build a temporary HashSet of active highlights for tree_to_lines
-        let active_highlights: HashSet<PathBuf> = self.changed_paths.keys().cloned().collect();
+        let active_highlights = self.highlights.active_set(now);
 
         let entries = build_tree(self.path, self.tree_config);
         let entry_count = entries.len();
 
+        let (term_width, area_height) = self
+            .terminal
+            .size()
+            .map(|s| (s.width, s.height))
+            .unwrap_or((80, 24));
+
         let r_cfg = RenderConfig {
             use_color: self.use_color,
-            terminal_width: self.terminal.size().map(|s| s.width).unwrap_or(80),
+            terminal_width: term_width,
         };
 
         let tree_lines = tree_to_lines(&entries, &r_cfg, &active_highlights);
         self.total_lines = tree_lines.len();
-
-        // Clamp scroll offset (2 rows reserved: status bar + help bar)
-        let area_height = self.terminal.size().map(|s| s.height).unwrap_or(24);
         let tree_area_height = area_height.saturating_sub(2) as usize;
         if self.total_lines > tree_area_height {
             let max_scroll = self.total_lines.saturating_sub(tree_area_height);
@@ -99,7 +96,6 @@ impl<'a> AppState<'a> {
             &path_str,
             &display_count,
             self.last_change.as_deref(),
-            r_cfg.terminal_width,
         );
 
         // Build help bar
@@ -208,7 +204,7 @@ pub fn run(
                         // reports parent dirs when their children change).
                         let now = Instant::now();
                         for p in paths.into_iter().filter(|p| !p.is_dir()) {
-                            state.changed_paths.insert(p, now);
+                            state.highlights.insert(p, now);
                         }
                         // Keep scroll position; render() will clamp if tree shrunk
                         state.render();
@@ -235,7 +231,7 @@ pub fn run(
                         match code {
                             KeyCode::Char('q') => break,
                             KeyCode::Char('r') => {
-                                state.changed_paths.clear();
+                                state.highlights.clear();
                                 state.render();
                             }
                             KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => break,

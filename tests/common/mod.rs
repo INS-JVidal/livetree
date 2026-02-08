@@ -72,7 +72,3 @@ pub fn make_entry(
     }
 }
 
-/// Extract plain text from a ratatui Line.
-pub fn line_to_text(line: &ratatui::text::Line<'_>) -> String {
-    line.spans.iter().map(|s| s.content.as_ref()).collect()
-}
