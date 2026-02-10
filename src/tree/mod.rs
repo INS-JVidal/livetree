@@ -4,7 +4,7 @@ mod layout;
 pub(crate) mod walk;
 
 use globset::GlobSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub use walk::{build_ignore_set, build_tree};
 
@@ -43,4 +43,18 @@ pub struct TreeConfig {
     pub follow_symlinks: bool,
     /// Glob patterns for entries to exclude.
     pub ignore_patterns: GlobSet,
+}
+
+/// Abstraction over tree construction so it can be swapped or mocked.
+pub trait TreeBuilder {
+    fn build_tree(&self, root: &Path, config: &TreeConfig) -> Vec<TreeEntry>;
+}
+
+/// Default `TreeBuilder` that delegates to the walkdir-based implementation.
+pub struct WalkdirTreeBuilder;
+
+impl TreeBuilder for WalkdirTreeBuilder {
+    fn build_tree(&self, root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
+        build_tree(root, config)
+    }
 }

@@ -71,4 +71,3 @@ pub fn make_entry(
         error: error.map(|s| s.to_string()),
     }
 }
-

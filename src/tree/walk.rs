@@ -6,7 +6,15 @@ use super::layout::compute_tree_structure;
 use super::{TreeConfig, TreeEntry};
 
 /// Raw entry data collected during filesystem traversal, before layout computation.
-pub(super) type RawEntry = (usize, String, PathBuf, bool, bool, Option<String>, Option<String>);
+pub(super) type RawEntry = (
+    usize,
+    String,
+    PathBuf,
+    bool,
+    bool,
+    Option<String>,
+    Option<String>,
+);
 
 const DEFAULT_IGNORES: &[&str] = &[".git", "node_modules", "__pycache__", ".DS_Store"];
 
@@ -31,21 +39,22 @@ pub fn build_ignore_set(user_patterns: &[String]) -> GlobSet {
         }
     }
     if !invalid.is_empty() {
-        eprintln!("livetree: invalid ignore pattern(s), skipped: {:?}", invalid);
+        eprintln!(
+            "livetree: invalid ignore pattern(s), skipped: {:?}",
+            invalid
+        );
     }
-    builder
-        .build()
-        .unwrap_or_else(|e| {
-            eprintln!("livetree: failed to build ignore set: {}", e);
-            GlobSet::empty()
-        })
+    builder.build().unwrap_or_else(|e| {
+        eprintln!("livetree: failed to build ignore set: {}", e);
+        GlobSet::empty()
+    })
 }
 
 /// Build the tree from a root path.
 pub fn build_tree(root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
     let mut walker = WalkDir::new(root)
         .follow_links(config.follow_symlinks)
-        .sort_by(|a, b| sort_cmp(a, b));
+        .sort_by(sort_cmp);
 
     if let Some(max_depth) = config.max_depth {
         walker = walker.max_depth(max_depth);
@@ -109,7 +118,15 @@ pub fn build_tree(root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
                     None
                 };
 
-                raw_entries.push((depth, file_name, path, is_dir, is_symlink, symlink_target, None));
+                raw_entries.push((
+                    depth,
+                    file_name,
+                    path,
+                    is_dir,
+                    is_symlink,
+                    symlink_target,
+                    None,
+                ));
             }
             Err(e) => {
                 // walkdir error — extract what we can

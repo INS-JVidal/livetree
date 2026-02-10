@@ -7,23 +7,28 @@ mod terminal;
 mod tree;
 mod watcher;
 
+use anyhow::{Context, Result};
 use clap::Parser;
 use cli::Args;
 use render::RenderConfig;
 use tree::{build_ignore_set, TreeConfig};
 
 fn main() {
-    let args = Args::parse().validated();
-
-    let path = args.path.canonicalize().unwrap_or_else(|e| {
-        eprintln!("livetree: {}: {}", args.path.display(), e);
-        std::process::exit(1);
-    });
-
-    if !path.is_dir() {
-        eprintln!("livetree: {}: Not a directory", path.display());
+    if let Err(e) = run_app() {
+        eprintln!("livetree: {e:#}");
         std::process::exit(1);
     }
+}
+
+fn run_app() -> Result<()> {
+    let args = Args::parse().validated();
+
+    let path = args
+        .path
+        .canonicalize()
+        .with_context(|| format!("{}: failed to resolve path", args.path.display()))?;
+
+    anyhow::ensure!(path.is_dir(), "{}: Not a directory", path.display());
 
     // Build configs
     let tree_config = TreeConfig {
@@ -40,21 +45,27 @@ fn main() {
         terminal_width: term_width,
     };
 
+    if args.verbose > 0 && !args.quiet {
+        eprintln!(
+            "livetree: watching {} (debounce={}ms, color={})",
+            path.display(),
+            args.debounce_ms,
+            if render_config.use_color { "on" } else { "off" }
+        );
+    }
+
     // Start filesystem watcher
-    let (_debouncer, fs_rx) = watcher::start_watcher(&path, args.debounce_ms).unwrap_or_else(|e| {
-        eprintln!("livetree: failed to start watcher: {}", e);
-        std::process::exit(1);
-    });
+    let (_debouncer, fs_rx) = watcher::start_watcher(&path, args.debounce_ms)
+        .map_err(anyhow::Error::msg)
+        .context("failed to start watcher")?;
 
     // Initialize ratatui terminal (alternate screen, raw mode, panic hook)
-    let term = terminal::init().unwrap_or_else(|e| {
-        eprintln!("livetree: failed to initialize terminal: {}", e);
-        std::process::exit(1);
-    });
+    let term = terminal::init().context("failed to initialize terminal")?;
 
     // Run the main event loop (blocks until quit)
-    event_loop::run(term, &path, &tree_config, &render_config, fs_rx);
+    event_loop::run(term, &path, &tree_config, &render_config, fs_rx, args.quiet);
 
     // Restore terminal state
     terminal::restore();
+    Ok(())
 }

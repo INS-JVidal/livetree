@@ -2,7 +2,9 @@ mod common;
 
 use common::{create_fixture, default_tree_config};
 use globset::GlobSet;
-use livetree::tree::{build_ignore_set, build_tree, TreeConfig, TreeEntry};
+use livetree::tree::{
+    build_ignore_set, build_tree, TreeBuilder, TreeConfig, TreeEntry, WalkdirTreeBuilder,
+};
 use tempfile::TempDir;
 
 fn default_config() -> TreeConfig {
@@ -147,6 +149,18 @@ fn test_custom_ignore_pattern() {
     assert!(names.contains(&"main.rs"));
 }
 
+#[test]
+fn test_walkdir_tree_builder_trait_matches_free_function() {
+    let tmp = create_fixture(&["src/", "src/main.rs", "README.md"]);
+    let cfg = default_config();
+    let builder = WalkdirTreeBuilder;
+
+    let via_trait = builder.build_tree(tmp.path(), &cfg);
+    let via_function = build_tree(tmp.path(), &cfg);
+
+    assert_eq!(via_trait, via_function);
+}
+
 // --- Dirs Only ---
 
 #[test]
@@ -249,11 +263,7 @@ fn test_empty_directory() {
 #[cfg(unix)]
 fn test_symlink_detected() {
     let tmp = create_fixture(&["target.txt"]);
-    std::os::unix::fs::symlink(
-        tmp.path().join("target.txt"),
-        tmp.path().join("link.txt"),
-    )
-    .unwrap();
+    std::os::unix::fs::symlink(tmp.path().join("target.txt"), tmp.path().join("link.txt")).unwrap();
     let entries = build_tree(tmp.path(), &default_config());
     let link = entries.iter().find(|e| e.name == "link.txt");
     assert!(link.is_some(), "Symlink should appear in tree");

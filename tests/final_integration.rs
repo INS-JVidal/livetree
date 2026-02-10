@@ -83,7 +83,6 @@ fn create_project_fixture(root: &Path) {
     );
 }
 
-
 // ───────────────────────────────────────────────────
 // Test 1: Full Lifecycle
 // ───────────────────────────────────────────────────
@@ -152,7 +151,11 @@ fn test_full_lifecycle() {
             },
             &HashSet::new(),
         );
-        let output: String = lines.iter().map(|l| line_to_plain_text(l)).collect::<Vec<_>>().join("\n");
+        let output: String = lines
+            .iter()
+            .map(|l| line_to_plain_text(l))
+            .collect::<Vec<_>>()
+            .join("\n");
         info!("Rendered tree:\n{}", output);
     }
 
@@ -164,11 +167,7 @@ fn test_full_lifecycle() {
         // Mutation 1: Add a new file
         info!("Mutation 1: Adding new_feature.rs...");
         let before_count = build_tree(tmp.path(), &cfg).len();
-        fs::write(
-            tmp.path().join("src/new_feature.rs"),
-            "pub fn feature() {}",
-        )
-        .unwrap();
+        fs::write(tmp.path().join("src/new_feature.rs"), "pub fn feature() {}").unwrap();
         let after = build_tree(tmp.path(), &cfg);
         assert_eq!(after.len(), before_count + 1);
         assert!(after.iter().any(|e| e.name == "new_feature.rs"));
@@ -188,11 +187,7 @@ fn test_full_lifecycle() {
         // Mutation 3: Add directory with files
         info!("Mutation 3: Adding config/ directory...");
         fs::create_dir(tmp.path().join("config")).unwrap();
-        fs::write(
-            tmp.path().join("config/settings.toml"),
-            "key = \"value\"",
-        )
-        .unwrap();
+        fs::write(tmp.path().join("config/settings.toml"), "key = \"value\"").unwrap();
         let after = build_tree(tmp.path(), &cfg);
         assert!(after.iter().any(|e| e.name == "config"));
         assert!(after.iter().any(|e| e.name == "settings.toml"));
@@ -230,8 +225,7 @@ fn test_full_lifecycle() {
         fs::create_dir(watch_tmp.path().join("src")).unwrap();
         fs::write(watch_tmp.path().join("src/main.rs"), "fn main() {}").unwrap();
 
-        let (watcher, rx) =
-            start_watcher(watch_tmp.path(), 100).expect("Watcher should start");
+        let (watcher, rx) = start_watcher(watch_tmp.path(), 100).expect("Watcher should start");
 
         // Let watcher settle
         std::thread::sleep(Duration::from_millis(200));
@@ -297,7 +291,11 @@ fn test_full_lifecycle() {
 
         assert!(lines.len() >= 3, "Should have at least 3 lines");
 
-        let all_text: String = lines.iter().map(|l| line_to_plain_text(l)).collect::<Vec<_>>().join("\n");
+        let all_text: String = lines
+            .iter()
+            .map(|l| line_to_plain_text(l))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(all_text.contains("src"));
         assert!(all_text.contains("main.rs"));
         assert!(all_text.contains("README.md"));
@@ -372,10 +370,7 @@ fn test_full_lifecycle() {
             // Validate invariants
             if cfg.dirs_only {
                 assert!(
-                    entries
-                        .iter()
-                        .filter(|e| e.depth >= 1)
-                        .all(|e| e.is_dir),
+                    entries.iter().filter(|e| e.depth >= 1).all(|e| e.is_dir),
                     "FAIL: dirs_only config '{}' has non-dir entries",
                     label
                 );
@@ -448,11 +443,7 @@ fn test_performance_large_directory() {
         &HashSet::new(),
     );
     let render_duration = start.elapsed();
-    info!(
-        "Render: {} lines in {:?}",
-        lines.len(),
-        render_duration
-    );
+    info!("Render: {} lines in {:?}", lines.len(), render_duration);
     assert!(
         render_duration < Duration::from_millis(100),
         "Render took {:?}, should be < 100ms",
@@ -461,5 +452,8 @@ fn test_performance_large_directory() {
 
     let total = build_duration + render_duration;
     info!("  [PASS] Total pipeline: {:?}", total);
-    info!("  Target for smooth 5 FPS: < 200ms total. Actual: {:?}", total);
+    info!(
+        "  Target for smooth 5 FPS: < 200ms total. Actual: {:?}",
+        total
+    );
 }

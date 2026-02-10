@@ -12,6 +12,12 @@ pub struct HighlightTracker {
     entries: HashMap<PathBuf, Instant>,
 }
 
+impl Default for HighlightTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HighlightTracker {
     pub fn new() -> Self {
         Self {
@@ -71,7 +77,10 @@ mod tests {
         let later = now + HIGHLIGHT_DURATION + Duration::from_millis(1);
         let active = tracker.active_set(later);
         assert!(active.is_empty(), "Expired entry should be pruned");
-        assert!(tracker.is_empty(), "Internal map should be empty after pruning");
+        assert!(
+            tracker.is_empty(),
+            "Internal map should be empty after pruning"
+        );
     }
 
     #[test]

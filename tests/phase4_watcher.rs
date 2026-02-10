@@ -1,4 +1,4 @@
-use livetree::watcher::{start_watcher, WatchEvent};
+use livetree::watcher::{start_watcher, FsWatcher, NotifyFsWatcher, WatchEvent};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -116,11 +116,7 @@ fn test_watcher_debounces_rapid_events() {
         count += 1;
     }
 
-    assert!(
-        count > 0,
-        "Expected at least one event, got {}",
-        count
-    );
+    assert!(count > 0, "Expected at least one event, got {}", count);
     assert!(
         count < 10,
         "Expected fewer than 10 debounced events, got {}",
@@ -156,10 +152,7 @@ fn test_watcher_detects_nested_changes() {
 #[test]
 fn test_watcher_nonexistent_path_returns_error() {
     let result = start_watcher(std::path::Path::new("/nonexistent_path_xyz"), 100);
-    assert!(
-        result.is_err(),
-        "Expected Err for nonexistent path, got Ok"
-    );
+    assert!(result.is_err(), "Expected Err for nonexistent path, got Ok");
 }
 
 #[test]
@@ -184,4 +177,20 @@ fn test_watcher_changed_paths_contain_created_file() {
         }
         other => panic!("Expected Changed, got {:?}", other),
     }
+}
+
+#[test]
+fn test_notify_watcher_trait_start_works() {
+    let dir = TempDir::new().unwrap();
+    let watcher = NotifyFsWatcher;
+    let (_handle, rx) = watcher.start(dir.path(), 100).unwrap();
+
+    std::thread::sleep(Duration::from_millis(200));
+    fs::write(dir.path().join("from_trait.txt"), b"hello").unwrap();
+
+    let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert!(
+        matches!(event, WatchEvent::Changed(_)),
+        "Expected Changed event from trait watcher"
+    );
 }

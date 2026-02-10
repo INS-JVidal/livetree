@@ -2,7 +2,7 @@
 
 Rust codebase review for quality, SOLID principles, clean architecture, and clean code. Findings are grouped by severity with principle mapping and file references.
 
-**Implementation status:** C1, H1, H2, H3, M2, M3, M4 have been implemented. M1 (DIP), M5 (SRP), and L1–L3 remain as optional refactors.
+**Implementation status:** C1, H1, H2, H3, M2, M3, M4 and the initial DIP/scroll refactors have been implemented. M1 (traits fully exploited), M5 (encara més SRP), i L1–L3 romanen com a refactors opcionals.
 
 ---
 

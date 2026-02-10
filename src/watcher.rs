@@ -20,11 +20,24 @@ pub enum WatchEvent {
     Error(String),
 }
 
+/// Handle for the active watcher; must be kept alive while receiving events.
+pub type WatcherHandle = Debouncer<RecommendedWatcher, RecommendedCache>;
+
+/// Trait abstraction for filesystem watching so it can be swapped or mocked.
+#[allow(dead_code)]
+pub trait FsWatcher {
+    fn start(
+        &self,
+        path: &Path,
+        debounce_ms: u64,
+    ) -> Result<(WatcherHandle, Receiver<WatchEvent>), String>;
+}
+
 /// Start watching a directory. Returns the debouncer (must be kept alive!) and a receiver.
 pub fn start_watcher(
     path: &Path,
     debounce_ms: u64,
-) -> Result<(Debouncer<RecommendedWatcher, RecommendedCache>, Receiver<WatchEvent>), String> {
+) -> Result<(WatcherHandle, Receiver<WatchEvent>), String> {
     // Verify path exists before attempting to watch
     if !path.exists() {
         return Err(format!("Path does not exist: {}", path.display()));
@@ -73,4 +86,18 @@ pub fn start_watcher(
         .map_err(|e| format!("Failed to watch path {}: {}", path.display(), e))?;
 
     Ok((debouncer, rx))
+}
+
+/// Default watcher implementation backed by `notify` + `notify-debouncer-full`.
+#[allow(dead_code)]
+pub struct NotifyFsWatcher;
+
+impl FsWatcher for NotifyFsWatcher {
+    fn start(
+        &self,
+        path: &Path,
+        debounce_ms: u64,
+    ) -> Result<(WatcherHandle, Receiver<WatchEvent>), String> {
+        start_watcher(path, debounce_ms)
+    }
 }

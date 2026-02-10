@@ -4,7 +4,7 @@
 use crate::highlight::HighlightTracker;
 use crate::render::{help_bar_line, status_bar_line, tree_to_lines, RenderConfig};
 use crate::terminal::Term;
-use crate::tree::{build_tree, TreeConfig, TreeEntry};
+use crate::tree::{TreeBuilder, TreeConfig, TreeEntry, WalkdirTreeBuilder};
 use crate::watcher::WatchEvent;
 use crossbeam_channel::{select, Receiver};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -17,34 +17,88 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
+/// Tracks scrolling state (offset + total lines) for the tree view.
+struct ScrollState {
+    offset: usize,
+    total_lines: usize,
+}
+
+impl ScrollState {
+    fn new() -> Self {
+        Self {
+            offset: 0,
+            total_lines: 0,
+        }
+    }
+
+    fn update_total_and_clamp(&mut self, total_lines: usize, view_height: usize) {
+        self.total_lines = total_lines;
+        if self.total_lines > view_height {
+            let max_scroll = self.total_lines.saturating_sub(view_height);
+            if self.offset > max_scroll {
+                self.offset = max_scroll;
+            }
+        } else {
+            self.offset = 0;
+        }
+    }
+
+    fn scroll_up(&mut self, n: usize) {
+        self.offset = self.offset.saturating_sub(n);
+    }
+
+    fn scroll_down(&mut self, n: usize) {
+        self.offset = self.offset.saturating_add(n);
+    }
+
+    fn scroll_home(&mut self) {
+        self.offset = 0;
+    }
+
+    fn scroll_end(&mut self) {
+        self.offset = usize::MAX;
+    }
+
+    fn offset(&self) -> usize {
+        self.offset
+    }
+}
+
 /// Holds mutable state for the application's render loop.
 struct AppState<'a> {
     terminal: Term,
-    scroll_offset: usize,
     last_change: Option<String>,
     use_color: bool,
     path: &'a Path,
     tree_config: &'a TreeConfig,
-    /// Total number of tree lines (for scroll clamping).
-    total_lines: usize,
+    /// Scroll state for the tree view.
+    scroll: ScrollState,
     /// Tracks recently changed paths with per-entry expiration.
     highlights: HighlightTracker,
     /// Cached tree entries; invalidated on WatchEvent::Changed to avoid rebuild on every key.
     tree_cache: Option<Vec<TreeEntry>>,
+    /// Strategy for building the tree (allows swapping/mocking).
+    tree_builder: &'a dyn TreeBuilder,
 }
 
 impl<'a> AppState<'a> {
-    fn new(terminal: Term, path: &'a Path, tree_config: &'a TreeConfig, use_color: bool) -> Self {
+    fn new(
+        terminal: Term,
+        path: &'a Path,
+        tree_config: &'a TreeConfig,
+        use_color: bool,
+        tree_builder: &'a dyn TreeBuilder,
+    ) -> Self {
         Self {
             terminal,
-            scroll_offset: 0,
             last_change: None,
             use_color,
             path,
             tree_config,
-            total_lines: 0,
+            scroll: ScrollState::new(),
             highlights: HighlightTracker::new(),
             tree_cache: None,
+            tree_builder,
         }
     }
 
@@ -55,9 +109,11 @@ impl<'a> AppState<'a> {
         let active_highlights = self.highlights.active_set(now);
 
         if self.tree_cache.is_none() {
-            self.tree_cache = Some(build_tree(self.path, self.tree_config));
+            self.tree_cache = Some(self.tree_builder.build_tree(self.path, self.tree_config));
         }
-        let entries = self.tree_cache.as_ref().unwrap();
+        let Some(entries) = self.tree_cache.as_ref() else {
+            return;
+        };
         let entry_count = entries.len();
 
         let (term_width, area_height) = self
@@ -71,38 +127,27 @@ impl<'a> AppState<'a> {
             terminal_width: term_width,
         };
 
-        let tree_lines = tree_to_lines(&entries, &r_cfg, &active_highlights);
-        self.total_lines = tree_lines.len();
+        let tree_lines = tree_to_lines(entries, &r_cfg, &active_highlights);
         let tree_area_height = area_height.saturating_sub(2) as usize;
-        if self.total_lines > tree_area_height {
-            let max_scroll = self.total_lines.saturating_sub(tree_area_height);
-            if self.scroll_offset > max_scroll {
-                self.scroll_offset = max_scroll;
-            }
-        } else {
-            self.scroll_offset = 0;
-        }
+        self.scroll
+            .update_total_and_clamp(tree_lines.len(), tree_area_height);
 
-        let scroll_offset = self.scroll_offset;
+        let scroll_offset = self.scroll.offset();
 
         // Build status bar
-        let display_count = if self.total_lines > tree_area_height {
+        let display_count = if self.scroll.total_lines > tree_area_height {
             format!(
                 "{} entries ({} visible, scroll {}/{})",
                 entry_count,
-                tree_area_height.min(self.total_lines),
+                tree_area_height.min(self.scroll.total_lines),
                 scroll_offset + 1,
-                self.total_lines.saturating_sub(tree_area_height) + 1,
+                self.scroll.total_lines.saturating_sub(tree_area_height) + 1,
             )
         } else {
             format!("{} entries", entry_count)
         };
         let path_str = self.path.to_string_lossy().to_string();
-        let status = status_bar_line(
-            &path_str,
-            &display_count,
-            self.last_change.as_deref(),
-        );
+        let status = status_bar_line(&path_str, &display_count, self.last_change.as_deref());
 
         // Build help bar
         let help = help_bar_line();
@@ -119,8 +164,7 @@ impl<'a> AppState<'a> {
             .split(area);
 
             // Tree paragraph with scroll
-            let tree_widget = Paragraph::new(tree_lines)
-                .scroll((scroll_offset as u16, 0));
+            let tree_widget = Paragraph::new(tree_lines).scroll((scroll_offset as u16, 0));
             frame.render_widget(tree_widget, chunks[0]);
 
             // Status bar
@@ -144,24 +188,22 @@ impl<'a> AppState<'a> {
 
     /// Scroll up by `n` lines.
     fn scroll_up(&mut self, n: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(n);
+        self.scroll.scroll_up(n);
     }
 
     /// Scroll down by `n` lines.
     fn scroll_down(&mut self, n: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_add(n);
-        // render() will clamp
+        self.scroll.scroll_down(n);
     }
 
     /// Scroll to top.
     fn scroll_home(&mut self) {
-        self.scroll_offset = 0;
+        self.scroll.scroll_home();
     }
 
     /// Scroll to bottom.
     fn scroll_end(&mut self) {
-        // Set to large value; render() will clamp
-        self.scroll_offset = usize::MAX;
+        self.scroll.scroll_end();
     }
 
     /// Get the visible tree area height (minus status bar + help bar).
@@ -171,15 +213,25 @@ impl<'a> AppState<'a> {
     }
 }
 
-/// Run the main application loop. Blocks until the user quits.
-pub fn run(
+/// Internal implementation of the main loop, parameterized over a `TreeBuilder`.
+fn run_with_tree_builder(
     terminal: Term,
     path: &Path,
     tree_config: &TreeConfig,
     render_config: &RenderConfig,
     fs_rx: Receiver<WatchEvent>,
+    tree_builder: &dyn TreeBuilder,
+    quiet: bool,
 ) {
     let shutdown = Arc::new(AtomicBool::new(false));
+    let interrupted = Arc::new(AtomicBool::new(false));
+
+    {
+        let interrupted = interrupted.clone();
+        let _ = ctrlc::set_handler(move || {
+            interrupted.store(true, Ordering::SeqCst);
+        });
+    }
 
     // Spawn keyboard input reader
     let (key_tx, key_rx) = crossbeam_channel::unbounded();
@@ -194,7 +246,13 @@ pub fn run(
         }
     });
 
-    let mut state = AppState::new(terminal, path, tree_config, render_config.use_color);
+    let mut state = AppState::new(
+        terminal,
+        path,
+        tree_config,
+        render_config.use_color,
+        tree_builder,
+    );
 
     // Initial render
     state.render();
@@ -224,7 +282,9 @@ pub fn run(
                         break;
                     }
                     Ok(WatchEvent::Error(e)) => {
-                        eprintln!("Watcher error: {}", e);
+                        if !quiet {
+                            eprintln!("Watcher error: {}", e);
+                        }
                     }
                     Err(_) => {
                         // Channel closed, watcher thread died
@@ -277,6 +337,11 @@ pub fn run(
                     _ => {}
                 }
             }
+            default(std::time::Duration::from_millis(100)) => {
+                if interrupted.load(Ordering::SeqCst) {
+                    break;
+                }
+            }
         }
     }
 
@@ -285,6 +350,28 @@ pub fn run(
     if let Err(e) = input_handle.join() {
         std::panic::resume_unwind(e);
     }
+}
+
+/// Run the main application loop with the default `WalkdirTreeBuilder`.
+/// Blocks until the user quits.
+pub fn run(
+    terminal: Term,
+    path: &Path,
+    tree_config: &TreeConfig,
+    render_config: &RenderConfig,
+    fs_rx: Receiver<WatchEvent>,
+    quiet: bool,
+) {
+    let default_builder = WalkdirTreeBuilder;
+    run_with_tree_builder(
+        terminal,
+        path,
+        tree_config,
+        render_config,
+        fs_rx,
+        &default_builder,
+        quiet,
+    );
 }
 
 /// Simple timestamp without pulling in chrono.

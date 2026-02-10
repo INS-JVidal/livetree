@@ -1,6 +1,7 @@
 //! Command-line argument parsing via `clap` derive.
 
 use clap::Parser;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 /// Parsed command-line arguments for livetree.
@@ -8,7 +9,8 @@ use std::path::PathBuf;
 #[command(
     name = "livetree",
     version = concat!(env!("CARGO_PKG_VERSION"), " (build ", env!("BUILD_NUMBER"), ")"),
-    about = "Real-time directory tree watcher"
+    about = "Real-time directory tree watcher",
+    after_help = "Examples:\n  livetree .\n  livetree -L 3 -I target -I \"*.log\" ./my-project\n  NO_COLOR=1 livetree --dirs-only ."
 )]
 pub struct Args {
     /// Directory to watch (default: current directory)
@@ -42,6 +44,14 @@ pub struct Args {
     /// Disable colored output
     #[arg(long = "no-color")]
     pub no_color: bool,
+
+    /// Increase verbosity (-v, -vv)
+    #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
+    pub verbose: u8,
+
+    /// Silence non-critical stderr messages
+    #[arg(long = "quiet")]
+    pub quiet: bool,
 }
 
 impl Args {
@@ -53,6 +63,14 @@ impl Args {
         // Respect NO_COLOR env var
         if std::env::var("NO_COLOR").is_ok() {
             self.no_color = true;
+        }
+        // Disable color for non-interactive stdout unless explicitly overridden later.
+        if !std::io::stdout().is_terminal() {
+            self.no_color = true;
+        }
+        // quiet overrides verbosity intent
+        if self.quiet {
+            self.verbose = 0;
         }
         self
     }

@@ -34,8 +34,8 @@ pub(super) fn compute_tree_structure(raw: &[RawEntry]) -> Vec<TreeEntry> {
 fn is_last_sibling(raw: &[RawEntry], i: usize) -> bool {
     let depth = raw[i].0;
     // Look ahead for next entry at the same or lesser depth
-    for j in (i + 1)..raw.len() {
-        let next_depth = raw[j].0;
+    for next in raw.iter().skip(i + 1) {
+        let next_depth = next.0;
         if next_depth == depth {
             return false; // there's another sibling
         }

@@ -14,7 +14,10 @@ fn test_help_flag() {
         .stdout(predicate::str::contains("--ignore"))
         .stdout(predicate::str::contains("--all"))
         .stdout(predicate::str::contains("--dirs-only"))
-        .stdout(predicate::str::contains("--debounce"));
+        .stdout(predicate::str::contains("--debounce"))
+        .stdout(predicate::str::contains("--verbose"))
+        .stdout(predicate::str::contains("--quiet"))
+        .stdout(predicate::str::contains("Examples:"));
 }
 
 #[test]
@@ -57,32 +60,49 @@ fn test_file_path_exits_with_error() {
 
 #[test]
 fn test_default_debounce_is_200() {
-    use livetree::cli::Args;
     use clap::Parser;
+    use livetree::cli::Args;
     let args = Args::parse_from(["livetree", "."]);
     assert_eq!(args.debounce_ms, 200);
 }
 
 #[test]
 fn test_custom_debounce() {
-    use livetree::cli::Args;
     use clap::Parser;
+    use livetree::cli::Args;
     let args = Args::parse_from(["livetree", "--debounce", "500", "."]);
     assert_eq!(args.debounce_ms, 500);
 }
 
 #[test]
 fn test_debounce_floor_enforced() {
-    use livetree::cli::Args;
     use clap::Parser;
+    use livetree::cli::Args;
     let args = Args::parse_from(["livetree", "--debounce", "10", "."]).validated();
     assert_eq!(args.debounce_ms, 50, "Debounce floor should be 50ms");
 }
 
 #[test]
 fn test_multiple_ignore_patterns() {
-    use livetree::cli::Args;
     use clap::Parser;
+    use livetree::cli::Args;
     let args = Args::parse_from(["livetree", "-I", "*.log", "-I", "node_modules", "."]);
     assert_eq!(args.ignore, vec!["*.log", "node_modules"]);
+}
+
+#[test]
+fn test_verbose_count_levels() {
+    use clap::Parser;
+    use livetree::cli::Args;
+    let args = Args::parse_from(["livetree", "-vv", "."]).validated();
+    assert_eq!(args.verbose, 2);
+}
+
+#[test]
+fn test_quiet_resets_verbose() {
+    use clap::Parser;
+    use livetree::cli::Args;
+    let args = Args::parse_from(["livetree", "-vv", "--quiet", "."]).validated();
+    assert!(args.quiet);
+    assert_eq!(args.verbose, 0, "quiet should reset verbosity to 0");
 }

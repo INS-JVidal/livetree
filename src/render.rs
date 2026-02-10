@@ -11,19 +11,38 @@ pub struct RenderConfig {
     /// Whether to emit color styling.
     pub use_color: bool,
     /// Current terminal width in columns.
+    #[allow(dead_code)]
     pub terminal_width: u16,
 }
 
 // Color constants matching the original ANSI palette.
-const DIR_STYLE: Style = Style::new()
-    .fg(Color::Blue)
-    .add_modifier(Modifier::BOLD);
+const DIR_STYLE: Style = Style::new().fg(Color::Blue).add_modifier(Modifier::BOLD);
 const SYMLINK_STYLE: Style = Style::new().fg(Color::Cyan);
 const ERROR_STYLE: Style = Style::new().fg(Color::Red);
 const PREFIX_STYLE: Style = Style::new().fg(Color::White);
-const CHANGED_STYLE: Style = Style::new()
-    .fg(Color::Cyan)
-    .add_modifier(Modifier::BOLD);
+const CHANGED_STYLE: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+
+/// Sanitize control characters to avoid terminal control-sequence injection.
+fn sanitize_terminal_text(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {
+                let code = c as u32;
+                if code <= 0xFF {
+                    out.push_str(&format!("\\x{:02X}", code));
+                } else {
+                    out.push_str(&format!("\\u{{{:X}}}", code));
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
 
 /// Convert a slice of `TreeEntry` into styled ratatui `Line` objects.
 pub fn tree_to_lines(
@@ -45,6 +64,7 @@ fn entry_to_line(
 ) -> Line<'static> {
     let is_changed = config.use_color && changed_paths.contains(&entry.path);
     let mut spans = Vec::new();
+    let safe_name = sanitize_terminal_text(&entry.name);
 
     // Prefix (tree-drawing characters)
     if !entry.prefix.is_empty() {
@@ -59,14 +79,16 @@ fn entry_to_line(
     // Name + decorations
     if is_changed {
         // Changed entries always get cyan bold, regardless of type
-        spans.push(Span::styled(entry.name.clone(), CHANGED_STYLE));
+        spans.push(Span::styled(safe_name.clone(), CHANGED_STYLE));
         if entry.is_symlink {
             if let Some(ref target) = entry.symlink_target {
-                spans.push(Span::styled(format!(" -> {}", target), CHANGED_STYLE));
+                let safe_target = sanitize_terminal_text(target);
+                spans.push(Span::styled(format!(" -> {}", safe_target), CHANGED_STYLE));
             }
         }
     } else if let Some(ref err) = entry.error {
-        let text = format!("{} [{}]", entry.name, err);
+        let safe_err = sanitize_terminal_text(err);
+        let text = format!("{} [{}]", safe_name, safe_err);
         if config.use_color {
             spans.push(Span::styled(text, ERROR_STYLE));
         } else {
@@ -74,21 +96,22 @@ fn entry_to_line(
         }
     } else if entry.is_symlink {
         if config.use_color {
-            spans.push(Span::styled(entry.name.clone(), SYMLINK_STYLE));
+            spans.push(Span::styled(safe_name.clone(), SYMLINK_STYLE));
         } else {
-            spans.push(Span::raw(entry.name.clone()));
+            spans.push(Span::raw(safe_name.clone()));
         }
         if let Some(ref target) = entry.symlink_target {
-            spans.push(Span::raw(format!(" -> {}", target)));
+            let safe_target = sanitize_terminal_text(target);
+            spans.push(Span::raw(format!(" -> {}", safe_target)));
         }
     } else if entry.is_dir {
         if config.use_color {
-            spans.push(Span::styled(entry.name.clone(), DIR_STYLE));
+            spans.push(Span::styled(safe_name, DIR_STYLE));
         } else {
-            spans.push(Span::raw(entry.name.clone()));
+            spans.push(Span::raw(safe_name));
         }
     } else {
-        spans.push(Span::raw(entry.name.clone()));
+        spans.push(Span::raw(safe_name));
     }
 
     Line::from(spans)
@@ -101,13 +124,15 @@ pub fn status_bar_line(
     last_change: Option<&str>,
 ) -> Line<'static> {
     let change_text = match last_change {
-        Some(ts) => format!("Last change: {}", ts),
+        Some(ts) => format!("Last change: {}", sanitize_terminal_text(ts)),
         None => "No changes yet".to_string(),
     };
 
+    let safe_path = sanitize_terminal_text(watched_path);
+    let safe_entry_info = sanitize_terminal_text(entry_info);
     let text = format!(
         " Watching: {}  |  {}  |  {}",
-        watched_path, entry_info, change_text
+        safe_path, safe_entry_info, change_text
     );
 
     let style = Style::new()
@@ -126,6 +151,7 @@ pub fn help_bar_line() -> Line<'static> {
 }
 
 /// Extract plain text from a `Line` (useful for testing).
+#[allow(dead_code)]
 pub fn line_to_plain_text(line: &Line<'_>) -> String {
     line.spans.iter().map(|s| s.content.as_ref()).collect()
 }

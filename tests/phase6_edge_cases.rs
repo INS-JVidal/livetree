@@ -65,7 +65,10 @@ fn test_symlink_loop_handled() {
     // This should NOT hang or panic
     let entries = build_tree(tmp.path(), &cfg);
 
-    assert!(!entries.is_empty(), "Should produce output despite symlink loop");
+    assert!(
+        !entries.is_empty(),
+        "Should produce output despite symlink loop"
+    );
     assert!(
         entries.len() < 100,
         "Symlink loop should not cause infinite traversal. Got {} entries",
@@ -154,11 +157,7 @@ fn test_nested_empty_directories() {
 fn test_symlink_to_file_shows_arrow() {
     let tmp = TempDir::new().unwrap();
     fs::write(tmp.path().join("real.txt"), "content").unwrap();
-    std::os::unix::fs::symlink(
-        tmp.path().join("real.txt"),
-        tmp.path().join("link.txt"),
-    )
-    .unwrap();
+    std::os::unix::fs::symlink(tmp.path().join("real.txt"), tmp.path().join("link.txt")).unwrap();
 
     let entries = build_tree(tmp.path(), &default_config());
     let link = entries.iter().find(|e| e.name == "link.txt").unwrap();

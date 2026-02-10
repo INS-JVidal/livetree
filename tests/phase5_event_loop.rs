@@ -47,11 +47,19 @@ fn test_full_pipeline_build_render() {
 
     let lines = tree_to_lines(&entries, &rcfg, &HashSet::new());
 
-    assert!(lines.len() >= 3, "Should have at least 3 lines (src, main.rs, README.md)");
+    assert!(
+        lines.len() >= 3,
+        "Should have at least 3 lines (src, main.rs, README.md)"
+    );
 
     let texts: Vec<String> = lines
         .iter()
-        .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
         .collect();
     let all_text = texts.join("\n");
     assert!(all_text.contains("src"));
@@ -81,8 +89,14 @@ fn test_watcher_triggers_rebuild() {
     let cfg = default_tree_config();
     let entries = build_tree(tmp.path(), &cfg);
     let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
-    assert!(names.contains(&"new.txt"), "Rebuilt tree should contain new file");
-    assert!(names.contains(&"initial.txt"), "Rebuilt tree should still contain initial file");
+    assert!(
+        names.contains(&"new.txt"),
+        "Rebuilt tree should contain new file"
+    );
+    assert!(
+        names.contains(&"initial.txt"),
+        "Rebuilt tree should still contain initial file"
+    );
 
     drop(watcher);
 }
