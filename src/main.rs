@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 mod cli;
 mod event_loop;
 mod highlight;
