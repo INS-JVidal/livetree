@@ -2,9 +2,9 @@
 //! rendering via ratatui's immediate-mode draw loop.
 
 use crate::highlight::HighlightTracker;
-use crate::render::{help_bar_line, status_bar_line, tree_to_lines, RenderConfig};
+use crate::render::{help_bar_line, status_bar_line, tree_to_lines, RenderConfig, truncation_line};
 use crate::terminal::Term;
-use crate::tree::{TreeBuilder, TreeConfig, TreeEntry, WalkdirTreeBuilder};
+use crate::tree::{TreeBuilder, TreeConfig, TreeSnapshot, WalkdirTreeBuilder};
 use crate::watcher::WatchEvent;
 use crossbeam_channel::{select, Receiver};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -75,8 +75,10 @@ struct AppState<'a> {
     scroll: ScrollState,
     /// Tracks recently changed paths with per-entry expiration.
     highlights: HighlightTracker,
-    /// Cached tree entries; invalidated on WatchEvent::Changed to avoid rebuild on every key.
-    tree_cache: Option<Vec<TreeEntry>>,
+    /// Current highlight duration in whole seconds (0 disables highlighting).
+    highlight_duration_secs: u64,
+    /// Cached tree snapshot; invalidated on WatchEvent::Changed to avoid rebuild on every key.
+    tree_cache: Option<TreeSnapshot>,
     /// Strategy for building the tree (allows swapping/mocking).
     tree_builder: &'a dyn TreeBuilder,
 }
@@ -96,7 +98,8 @@ impl<'a> AppState<'a> {
             path,
             tree_config,
             scroll: ScrollState::new(),
-            highlights: HighlightTracker::new(),
+            highlights: HighlightTracker::new(std::time::Duration::from_secs(3)),
+            highlight_duration_secs: 3,
             tree_cache: None,
             tree_builder,
         }
@@ -111,10 +114,11 @@ impl<'a> AppState<'a> {
         if self.tree_cache.is_none() {
             self.tree_cache = Some(self.tree_builder.build_tree(self.path, self.tree_config));
         }
-        let Some(entries) = self.tree_cache.as_ref() else {
+        let Some(snapshot) = self.tree_cache.as_ref() else {
             return;
         };
-        let entry_count = entries.len();
+        let entry_count_total = snapshot.total_entries;
+        let entry_count_shown = snapshot.entries.len();
 
         let (term_width, area_height) = self
             .terminal
@@ -127,7 +131,11 @@ impl<'a> AppState<'a> {
             terminal_width: term_width,
         };
 
-        let tree_lines = tree_to_lines(entries, &r_cfg, &active_highlights);
+        let mut tree_lines = tree_to_lines(&snapshot.entries, &r_cfg, &active_highlights);
+        let truncated = entry_count_total > entry_count_shown;
+        if truncated {
+            tree_lines.push(truncation_line(entry_count_shown, entry_count_total));
+        }
         let tree_area_height = area_height.saturating_sub(2) as usize;
         self.scroll
             .update_total_and_clamp(tree_lines.len(), tree_area_height);
@@ -135,18 +143,23 @@ impl<'a> AppState<'a> {
         let scroll_offset = self.scroll.offset();
 
         // Build status bar
-        let display_count = if self.scroll.total_lines > tree_area_height {
+        let display_count = if truncated {
+            format!(
+                "showing {} of {} entries (truncated)",
+                entry_count_shown, entry_count_total
+            )
+        } else if self.scroll.total_lines > tree_area_height {
             format!(
                 "{} entries ({} visible, scroll {}/{})",
-                entry_count,
+                entry_count_total,
                 tree_area_height.min(self.scroll.total_lines),
                 scroll_offset + 1,
                 self.scroll.total_lines.saturating_sub(tree_area_height) + 1,
             )
         } else {
-            format!("{} entries", entry_count)
+            format!("{} entries", entry_count_total)
         };
-        let path_str = self.path.to_string_lossy().to_string();
+        let path_str = format_watched_path(self.path);
         let status = status_bar_line(&path_str, &display_count, self.last_change.as_deref());
 
         // Build help bar
@@ -265,10 +278,9 @@ fn run_with_tree_builder(
                     Ok(WatchEvent::Changed(paths)) => {
                         state.last_change = Some(chrono_lite_now());
                         state.tree_cache = None; // invalidate so render() rebuilds tree
-                        // Only highlight files, not directories (inotify
-                        // reports parent dirs when their children change).
+                        // Highlight both files and directories; parent directories may also change.
                         let now = Instant::now();
-                        for p in paths.into_iter().filter(|p| !p.is_dir()) {
+                        for p in paths.into_iter() {
                             state.highlights.insert(p, now);
                         }
                         // Keep scroll position; render() will clamp if tree shrunk
@@ -328,6 +340,32 @@ fn run_with_tree_builder(
                                 state.scroll_end();
                                 state.render();
                             }
+                            KeyCode::Char('+') => {
+                                // Increase highlight duration by 1s, saturating at a reasonable upper bound.
+                                if state.highlight_duration_secs < 3600 {
+                                    state.highlight_duration_secs += 1;
+                                    state
+                                        .highlights
+                                        .set_duration(std::time::Duration::from_secs(
+                                            state.highlight_duration_secs,
+                                        ));
+                                }
+                                state.render();
+                            }
+                            KeyCode::Char('-') => {
+                                // Decrease highlight duration by 1s, clamped at 0 (disable).
+                                if state.highlight_duration_secs > 0 {
+                                    state.highlight_duration_secs -= 1;
+                                    state
+                                        .highlights
+                                        .set_duration(std::time::Duration::from_secs(
+                                            state.highlight_duration_secs,
+                                        ));
+                                } else {
+                                    state.highlights.set_duration(std::time::Duration::from_secs(0));
+                                }
+                                state.render();
+                            }
                             _ => {}
                         }
                     }
@@ -349,6 +387,31 @@ fn run_with_tree_builder(
     shutdown.store(true, Ordering::Relaxed);
     if let Err(e) = input_handle.join() {
         std::panic::resume_unwind(e);
+    }
+}
+
+/// Format the watched path for status bar display, collapsing the user's home
+/// directory to `~` when applicable.
+fn format_watched_path(path: &Path) -> String {
+    let raw = path.to_string_lossy().to_string();
+    let home = std::env::var("HOME").ok();
+    let Some(home_str) = home else {
+        return raw;
+    };
+
+    let home_path = std::path::Path::new(&home_str);
+    if path == home_path {
+        return "~".to_string();
+    }
+    if let Ok(stripped) = path.strip_prefix(home_path) {
+        let rest = stripped.to_string_lossy();
+        if rest.is_empty() {
+            "~".to_string()
+        } else {
+            format!("~/{}", rest)
+        }
+    } else {
+        raw
     }
 }
 

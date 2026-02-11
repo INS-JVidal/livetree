@@ -52,6 +52,14 @@ pub struct Args {
     /// Silence non-critical stderr messages
     #[arg(long = "quiet")]
     pub quiet: bool,
+
+    /// Maximum number of entries to include in the tree (default: 1000)
+    #[arg(long = "max-entries", default_value = "1000")]
+    pub max_entries: usize,
+
+    /// Do not set the terminal title (pane/window title remains unchanged)
+    #[arg(long = "no-title")]
+    pub no_title: bool,
 }
 
 impl Args {

@@ -12,6 +12,7 @@ pub fn default_tree_config() -> TreeConfig {
         dirs_only: false,
         follow_symlinks: false,
         ignore_patterns: build_ignore_set(&[]),
+        max_entries: None,
     }
 }
 

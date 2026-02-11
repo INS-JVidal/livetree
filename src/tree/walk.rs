@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
 use super::layout::compute_tree_structure;
-use super::{TreeConfig, TreeEntry};
+use super::{TreeConfig, TreeEntry, TreeSnapshot};
 
 /// Raw entry data collected during filesystem traversal, before layout computation.
 pub(super) type RawEntry = (
@@ -51,7 +51,7 @@ pub fn build_ignore_set(user_patterns: &[String]) -> GlobSet {
 }
 
 /// Build the tree from a root path.
-pub fn build_tree(root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
+pub fn build_tree(root: &Path, config: &TreeConfig) -> TreeSnapshot {
     let mut walker = WalkDir::new(root)
         .follow_links(config.follow_symlinks)
         .sort_by(sort_cmp);
@@ -149,8 +149,20 @@ pub fn build_tree(root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
         }
     }
 
+    // Apply max_entries cap if configured
+    let total_entries = raw_entries.len();
+    if let Some(max) = config.max_entries {
+        if raw_entries.len() > max {
+            raw_entries.truncate(max);
+        }
+    }
+
     // Now compute is_last and prefixes
-    compute_tree_structure(&raw_entries)
+    let entries = compute_tree_structure(&raw_entries);
+    TreeSnapshot {
+        entries,
+        total_entries,
+    }
 }
 
 /// Comparison function for walkdir sorting.

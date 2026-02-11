@@ -16,7 +16,8 @@ fn default_config() -> TreeConfig {
 #[test]
 fn test_directories_before_files() {
     let tmp = create_fixture(&["src/", "README.md", "build/", "main.rs"]);
-    let entries = build_tree(tmp.path(), &default_config());
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let entries = snapshot.entries;
 
     let top: Vec<&TreeEntry> = entries.iter().filter(|e| e.depth == 1).collect();
 
@@ -36,8 +37,9 @@ fn test_directories_before_files() {
 #[test]
 fn test_case_insensitive_alpha_sort() {
     let tmp = create_fixture(&["Banana.txt", "apple.txt", "Cherry.txt"]);
-    let entries = build_tree(tmp.path(), &default_config());
-    let names: Vec<&str> = entries
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let names: Vec<&str> = snapshot
+        .entries
         .iter()
         .filter(|e| e.depth == 1)
         .map(|e| e.name.as_str())
@@ -48,8 +50,9 @@ fn test_case_insensitive_alpha_sort() {
 #[test]
 fn test_dotfiles_hidden_by_default() {
     let tmp = create_fixture(&[".hidden", "visible.txt"]);
-    let entries = build_tree(tmp.path(), &default_config());
-    let names: Vec<&str> = entries
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let names: Vec<&str> = snapshot
+        .entries
         .iter()
         .filter(|e| e.depth == 1)
         .map(|e| e.name.as_str())
@@ -65,8 +68,9 @@ fn test_dotfiles_shown_with_all_flag() {
     cfg.show_hidden = true;
     // Use empty GlobSet to avoid .hidden being caught by default ignores
     cfg.ignore_patterns = GlobSet::empty();
-    let entries = build_tree(tmp.path(), &cfg);
-    let names: Vec<&str> = entries
+    let snapshot = build_tree(tmp.path(), &cfg);
+    let names: Vec<&str> = snapshot
+        .entries
         .iter()
         .filter(|e| e.depth == 1)
         .map(|e| e.name.as_str())
@@ -90,7 +94,8 @@ fn test_depth_limit_1() {
     let tmp = create_fixture(&["a/", "a/b/", "a/b/c.txt", "a/d.txt", "e.txt"]);
     let mut cfg = default_config();
     cfg.max_depth = Some(1);
-    let entries = build_tree(tmp.path(), &cfg);
+    let snapshot = build_tree(tmp.path(), &cfg);
+    let entries = snapshot.entries;
     assert!(
         entries.iter().all(|e| e.depth <= 1),
         "No entry should exceed depth 1"
@@ -102,9 +107,9 @@ fn test_depth_limit_2() {
     let tmp = create_fixture(&["a/", "a/b/", "a/b/deep.txt", "a/top.txt"]);
     let mut cfg = default_config();
     cfg.max_depth = Some(2);
-    let entries = build_tree(tmp.path(), &cfg);
-    assert!(entries.iter().all(|e| e.depth <= 2));
-    assert!(entries.iter().any(|e| e.depth == 2));
+    let snapshot = build_tree(tmp.path(), &cfg);
+    assert!(snapshot.entries.iter().all(|e| e.depth <= 2));
+    assert!(snapshot.entries.iter().any(|e| e.depth == 2));
 }
 
 // --- Ignore Patterns ---
@@ -122,8 +127,12 @@ fn test_default_ignores() {
     ]);
     let mut cfg = default_config();
     cfg.show_hidden = true;
-    let entries = build_tree(tmp.path(), &cfg);
-    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    let snapshot = build_tree(tmp.path(), &cfg);
+    let names: Vec<&str> = snapshot
+        .entries
+        .iter()
+        .map(|e| e.name.as_str())
+        .collect();
     assert!(!names.contains(&".git"), "Should ignore .git");
     assert!(
         !names.contains(&"node_modules"),
@@ -138,8 +147,9 @@ fn test_custom_ignore_pattern() {
     let tmp = create_fixture(&["debug.log", "app.log", "main.rs", "lib.rs"]);
     let mut cfg = default_config();
     cfg.ignore_patterns = build_ignore_set(&["*.log".to_string()]);
-    let entries = build_tree(tmp.path(), &cfg);
-    let names: Vec<&str> = entries
+    let snapshot = build_tree(tmp.path(), &cfg);
+    let names: Vec<&str> = snapshot
+        .entries
         .iter()
         .filter(|e| e.depth == 1)
         .map(|e| e.name.as_str())
@@ -168,7 +178,8 @@ fn test_dirs_only() {
     let tmp = create_fixture(&["src/", "src/main.rs", "tests/", "README.md"]);
     let mut cfg = default_config();
     cfg.dirs_only = true;
-    let entries = build_tree(tmp.path(), &cfg);
+    let snapshot = build_tree(tmp.path(), &cfg);
+    let entries = snapshot.entries;
     assert!(
         entries.iter().filter(|e| e.depth >= 1).all(|e| e.is_dir),
         "All entries should be directories when dirs_only is set"
@@ -180,7 +191,8 @@ fn test_dirs_only() {
 #[test]
 fn test_prefix_simple_tree() {
     let tmp = create_fixture(&["a/", "a/deep.txt", "b.txt"]);
-    let entries = build_tree(tmp.path(), &default_config());
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let entries = snapshot.entries;
 
     let a_entry = entries.iter().find(|e| e.name == "a").unwrap();
     assert!(
@@ -206,7 +218,8 @@ fn test_prefix_simple_tree() {
 #[test]
 fn test_prefix_deeply_nested() {
     let tmp = create_fixture(&["a/", "a/b/", "a/b/c/", "a/b/c/d.txt"]);
-    let entries = build_tree(tmp.path(), &default_config());
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let entries = snapshot.entries;
     let d = entries.iter().find(|e| e.name == "d.txt").unwrap();
     assert!(
         d.depth >= 3,
@@ -226,7 +239,8 @@ fn test_prefix_deeply_nested() {
 #[test]
 fn test_is_last_flag() {
     let tmp = create_fixture(&["alpha.txt", "beta.txt", "gamma.txt"]);
-    let entries = build_tree(tmp.path(), &default_config());
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let entries = snapshot.entries;
     let top: Vec<&TreeEntry> = entries.iter().filter(|e| e.depth == 1).collect();
     for (i, entry) in top.iter().enumerate() {
         if i == top.len() - 1 {
@@ -250,7 +264,8 @@ fn test_is_last_flag() {
 #[test]
 fn test_empty_directory() {
     let tmp = TempDir::new().unwrap();
-    let entries = build_tree(tmp.path(), &default_config());
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let entries = snapshot.entries;
     assert!(
         entries.iter().filter(|e| e.depth >= 1).count() == 0,
         "Empty directory should produce no child entries"
@@ -264,8 +279,11 @@ fn test_empty_directory() {
 fn test_symlink_detected() {
     let tmp = create_fixture(&["target.txt"]);
     std::os::unix::fs::symlink(tmp.path().join("target.txt"), tmp.path().join("link.txt")).unwrap();
-    let entries = build_tree(tmp.path(), &default_config());
-    let link = entries.iter().find(|e| e.name == "link.txt");
+    let snapshot = build_tree(tmp.path(), &default_config());
+    let link = snapshot
+        .entries
+        .iter()
+        .find(|e| e.name == "link.txt");
     assert!(link.is_some(), "Symlink should appear in tree");
     assert!(
         link.unwrap().is_symlink,

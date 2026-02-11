@@ -4,25 +4,30 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-/// How long a per-file highlight stays visible.
-pub const HIGHLIGHT_DURATION: Duration = Duration::from_secs(3);
-
 /// Tracks recently changed paths with per-entry expiration.
 pub struct HighlightTracker {
     entries: HashMap<PathBuf, Instant>,
+    duration: Duration,
 }
 
 impl Default for HighlightTracker {
     fn default() -> Self {
-        Self::new()
+        Self::new(Duration::from_secs(3))
     }
 }
 
 impl HighlightTracker {
-    pub fn new() -> Self {
+    pub fn new(duration: Duration) -> Self {
         Self {
             entries: HashMap::new(),
+            duration,
         }
+    }
+
+    /// Update the global highlight duration for future pruning.
+    /// Existing entries will respect the new duration on the next `active_set` call.
+    pub fn set_duration(&mut self, duration: Duration) {
+        self.duration = duration;
     }
 
     /// Record a path as highlighted at the given instant.
@@ -32,8 +37,13 @@ impl HighlightTracker {
 
     /// Return the set of paths whose highlights have not yet expired.
     pub fn active_set(&mut self, now: Instant) -> HashSet<PathBuf> {
+        if self.duration.is_zero() {
+            // When duration is zero, highlighting is effectively disabled.
+            self.entries.clear();
+            return HashSet::new();
+        }
         self.entries
-            .retain(|_, inserted| now.duration_since(*inserted) < HIGHLIGHT_DURATION);
+            .retain(|_, inserted| now.duration_since(*inserted) < self.duration);
         self.entries.keys().cloned().collect()
     }
 
@@ -49,6 +59,11 @@ impl HighlightTracker {
     fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Current duration used for pruning.
+    fn duration(&self) -> Duration {
+        self.duration
+    }
 }
 
 #[cfg(test)]
@@ -57,7 +72,7 @@ mod tests {
 
     #[test]
     fn test_insert_and_active() {
-        let mut tracker = HighlightTracker::new();
+        let mut tracker = HighlightTracker::new(Duration::from_secs(3));
         let now = Instant::now();
         tracker.insert(PathBuf::from("/tmp/a.txt"), now);
         tracker.insert(PathBuf::from("/tmp/b.txt"), now);
@@ -70,11 +85,11 @@ mod tests {
 
     #[test]
     fn test_expiry() {
-        let mut tracker = HighlightTracker::new();
+        let mut tracker = HighlightTracker::new(Duration::from_secs(3));
         let now = Instant::now();
         tracker.insert(PathBuf::from("/tmp/old.txt"), now);
 
-        let later = now + HIGHLIGHT_DURATION + Duration::from_millis(1);
+        let later = now + tracker.duration() + Duration::from_millis(1);
         let active = tracker.active_set(later);
         assert!(active.is_empty(), "Expired entry should be pruned");
         assert!(
@@ -85,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_clear() {
-        let mut tracker = HighlightTracker::new();
+        let mut tracker = HighlightTracker::new(Duration::from_secs(3));
         let now = Instant::now();
         tracker.insert(PathBuf::from("/tmp/a.txt"), now);
         tracker.insert(PathBuf::from("/tmp/b.txt"), now);
@@ -98,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_retouch_resets_timer() {
-        let mut tracker = HighlightTracker::new();
+        let mut tracker = HighlightTracker::new(Duration::from_secs(3));
         let t0 = Instant::now();
         tracker.insert(PathBuf::from("/tmp/a.txt"), t0);
 
@@ -114,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_mixed_expiry() {
-        let mut tracker = HighlightTracker::new();
+        let mut tracker = HighlightTracker::new(Duration::from_secs(3));
         let t0 = Instant::now();
         tracker.insert(PathBuf::from("/tmp/old.txt"), t0);
 
@@ -127,5 +142,18 @@ mod tests {
         assert_eq!(active.len(), 1);
         assert!(active.contains(&PathBuf::from("/tmp/new.txt")));
         assert!(!active.contains(&PathBuf::from("/tmp/old.txt")));
+    }
+
+    #[test]
+    fn test_zero_duration_disables_highlights() {
+        let mut tracker = HighlightTracker::new(Duration::from_secs(0));
+        let now = Instant::now();
+        tracker.insert(PathBuf::from("/tmp/a.txt"), now);
+        let active = tracker.active_set(now);
+        assert!(
+            active.is_empty(),
+            "Zero-duration tracker should not report any active highlights"
+        );
+        assert!(tracker.is_empty(), "Internal entries should be cleared");
     }
 }

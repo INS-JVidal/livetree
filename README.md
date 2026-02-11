@@ -32,11 +32,13 @@ cd livetree
 cargo install --path .
 ```
 
-### Local release binary
+### Using Make
 
 ```bash
-cargo build --release
-./target/release/livetree --version
+git clone https://github.com/jvidal/livetree
+cd livetree
+make build
+make install   # installs to ~/.local/bin/livetree
 ```
 
 ### Pre-built binaries (GitHub Releases)
@@ -44,9 +46,11 @@ cargo build --release
 ```bash
 curl -sSL https://github.com/jvidal/livetree/releases/latest/download/livetree-x86_64-unknown-linux-gnu.tar.gz -o livetree.tar.gz
 tar -xzf livetree.tar.gz
-chmod +x livetree
-./livetree --version
+install -d ~/.local/bin
+install -m 0755 livetree ~/.local/bin/
 ```
+
+> **Note:** Ensure `~/.local/bin` is in your `PATH`. Add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile if needed.
 
 ## Usage
 

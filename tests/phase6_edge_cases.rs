@@ -33,11 +33,11 @@ fn test_permission_denied_subdirectory() {
     let entries = build_tree(tmp.path(), &default_config());
 
     // The forbidden directory should appear in tree
-    let entry = entries.iter().find(|e| e.name == "forbidden");
+    let entry = entries.entries.iter().find(|e| e.name == "forbidden");
     assert!(entry.is_some(), "forbidden dir should still appear in tree");
 
     // Its children should NOT appear (can't be read)
-    let secret = entries.iter().find(|e| e.name == "secret.txt");
+    let secret = entries.entries.iter().find(|e| e.name == "secret.txt");
     assert!(
         secret.is_none(),
         "secret.txt should not be visible inside forbidden dir"
@@ -66,13 +66,13 @@ fn test_symlink_loop_handled() {
     let entries = build_tree(tmp.path(), &cfg);
 
     assert!(
-        !entries.is_empty(),
+        !entries.entries.is_empty(),
         "Should produce output despite symlink loop"
     );
     assert!(
-        entries.len() < 100,
+        entries.entries.len() < 100,
         "Symlink loop should not cause infinite traversal. Got {} entries",
-        entries.len()
+        entries.entries.len()
     );
 }
 
@@ -132,7 +132,7 @@ fn test_empty_root_directory() {
     let tmp = TempDir::new().unwrap();
     let entries = build_tree(tmp.path(), &default_config());
 
-    let lines = tree_to_lines(&entries, &no_color(80), &HashSet::new());
+    let lines = tree_to_lines(&entries.entries, &no_color(80), &HashSet::new());
     assert!(lines.len() <= 1, "Empty dir should produce at most 1 line");
 }
 
@@ -144,7 +144,11 @@ fn test_nested_empty_directories() {
     fs::create_dir_all(tmp.path().join("a/b/c")).unwrap();
 
     let entries = build_tree(tmp.path(), &default_config());
-    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    let names: Vec<&str> = entries
+        .entries
+        .iter()
+        .map(|e| e.name.as_str())
+        .collect();
     assert!(names.contains(&"a"));
     assert!(names.contains(&"b"));
     assert!(names.contains(&"c"));
@@ -208,7 +212,11 @@ fn test_entry_with_special_characters() {
     fs::write(tmp.path().join("emoji-🎉.txt"), "").unwrap();
 
     let entries = build_tree(tmp.path(), &default_config());
-    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    let names: Vec<&str> = entries
+        .entries
+        .iter()
+        .map(|e| e.name.as_str())
+        .collect();
     assert!(names.contains(&"café.txt"));
     assert!(names.contains(&"日本語.md"));
     assert!(names.contains(&"emoji-🎉.txt"));
@@ -227,7 +235,7 @@ fn test_large_directory_performance() {
     let entries = build_tree(tmp.path(), &default_config());
     let build_time = start.elapsed();
 
-    assert_eq!(entries.len(), 500);
+    assert_eq!(entries.entries.len(), 500);
     assert!(
         build_time < std::time::Duration::from_millis(500),
         "Building 500-entry tree should be fast. Took {:?}",
@@ -235,7 +243,7 @@ fn test_large_directory_performance() {
     );
 
     let start = std::time::Instant::now();
-    let lines = tree_to_lines(&entries, &no_color(80), &HashSet::new());
+    let lines = tree_to_lines(&entries.entries, &no_color(80), &HashSet::new());
     let render_time = start.elapsed();
 
     assert_eq!(lines.len(), 500);
@@ -259,11 +267,11 @@ fn test_terminal_height_1_renders_without_panic() {
     fs::write(tmp.path().join("b.txt"), "").unwrap();
 
     let entries = build_tree(tmp.path(), &default_config());
-    assert!(entries.len() >= 2, "Should have multiple entries");
+    assert!(entries.entries.len() >= 2, "Should have multiple entries");
 
     let cfg = no_color(80);
-    let lines = tree_to_lines(&entries, &cfg, &HashSet::new());
-    assert_eq!(lines.len(), entries.len());
+    let lines = tree_to_lines(&entries.entries, &cfg, &HashSet::new());
+    assert_eq!(lines.len(), entries.entries.len());
 
     // Verify each line has content
     for line in &lines {

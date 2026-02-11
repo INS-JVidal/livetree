@@ -43,18 +43,30 @@ pub struct TreeConfig {
     pub follow_symlinks: bool,
     /// Glob patterns for entries to exclude.
     pub ignore_patterns: GlobSet,
+    /// Optional maximum number of entries to include in the built tree.
+    /// When `Some(n)`, only the first `n` entries (after filtering/sorting) are kept.
+    pub max_entries: Option<usize>,
+}
+
+/// Snapshot of the built tree along with basic metadata.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TreeSnapshot {
+    /// Entries that will be rendered (possibly truncated).
+    pub entries: Vec<TreeEntry>,
+    /// Total number of entries discovered before truncation.
+    pub total_entries: usize,
 }
 
 /// Abstraction over tree construction so it can be swapped or mocked.
 pub trait TreeBuilder {
-    fn build_tree(&self, root: &Path, config: &TreeConfig) -> Vec<TreeEntry>;
+    fn build_tree(&self, root: &Path, config: &TreeConfig) -> TreeSnapshot;
 }
 
 /// Default `TreeBuilder` that delegates to the walkdir-based implementation.
 pub struct WalkdirTreeBuilder;
 
 impl TreeBuilder for WalkdirTreeBuilder {
-    fn build_tree(&self, root: &Path, config: &TreeConfig) -> Vec<TreeEntry> {
+    fn build_tree(&self, root: &Path, config: &TreeConfig) -> TreeSnapshot {
         build_tree(root, config)
     }
 }

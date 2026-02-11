@@ -13,6 +13,8 @@ fn main() {
     fs::write(path, format!("{}\n", next)).expect("failed to write BUILD_NUMBER");
 
     println!("cargo:rustc-env=BUILD_NUMBER={}", next);
-    println!("cargo:rerun-if-changed=BUILD_NUMBER");
+    // No rerun-if-changed for BUILD_NUMBER: this script modifies it on every
+    // build, so cargo always detects a change and reruns — which is the desired
+    // behaviour (every compilation gets a fresh build number).
     println!("cargo:rerun-if-changed=build.rs");
 }

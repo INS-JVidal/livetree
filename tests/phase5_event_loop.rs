@@ -16,14 +16,25 @@ fn test_rebuild_detects_new_file() {
 
     let cfg = default_tree_config();
     let entries1 = build_tree(tmp.path(), &cfg);
-    assert_eq!(entries1.iter().filter(|e| e.depth == 1).count(), 1);
+    assert_eq!(
+        entries1
+            .entries
+            .iter()
+            .filter(|e| e.depth == 1)
+            .count(),
+        1
+    );
 
     // Simulate filesystem change
     std::fs::write(tmp.path().join("b.txt"), "").unwrap();
 
     let entries2 = build_tree(tmp.path(), &cfg);
     assert_eq!(
-        entries2.iter().filter(|e| e.depth == 1).count(),
+        entries2
+            .entries
+            .iter()
+            .filter(|e| e.depth == 1)
+            .count(),
         2,
         "Rebuild after change should show new file"
     );
@@ -45,7 +56,7 @@ fn test_full_pipeline_build_render() {
         terminal_width: 80,
     };
 
-    let lines = tree_to_lines(&entries, &rcfg, &HashSet::new());
+    let lines = tree_to_lines(&entries.entries, &rcfg, &HashSet::new());
 
     assert!(
         lines.len() >= 3,
@@ -88,7 +99,11 @@ fn test_watcher_triggers_rebuild() {
     // Rebuild tree and verify
     let cfg = default_tree_config();
     let entries = build_tree(tmp.path(), &cfg);
-    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    let names: Vec<&str> = entries
+        .entries
+        .iter()
+        .map(|e| e.name.as_str())
+        .collect();
     assert!(
         names.contains(&"new.txt"),
         "Rebuilt tree should contain new file"

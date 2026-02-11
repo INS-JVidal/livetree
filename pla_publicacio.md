@@ -152,18 +152,21 @@ Structured plan for preparing a Rust CLI application for public distribution via
 - [✅] **Static linking (musl)** — Provide a statically linked Linux binary for maximum portability.
 - [ ] **`cargo-dist`** — Consider using [cargo-dist](https://opensource.axo.dev/cargo-dist/) to automate release artifact generation, installers, and shell/PowerShell install scripts.
 - [ ] **crates.io** — Publish with `cargo publish` so users can install via `cargo install your-app`.
-- [✅] **Install script** — Provide a one-liner in the README:
+- [✅] **Install script** — Provide installation instructions in the README:
   ```bash
   # From crates.io
   cargo install your-app
-  
-  # From source
-  git clone https://github.com/user/repo && cd repo && cargo install --path .
-  
+
+  # From source (installs to ~/.local/bin)
+  git clone https://github.com/user/repo && cd repo && make build && make install
+
   # Pre-built binary
-  curl -sSL https://github.com/user/repo/releases/latest/download/your-app-x86_64-linux -o your-app
-  chmod +x your-app
+  curl -sSL https://github.com/user/repo/releases/latest/download/your-app.tar.gz -o your-app.tar.gz
+  tar -xzf your-app.tar.gz
+  install -d ~/.local/bin
+  install -m 0755 your-app ~/.local/bin/
   ```
+  > The default install path is `~/.local/bin`, following the [XDG Base Directory](https://specifications.freedesktop.org/basedir-spec/latest/) convention. Users must ensure `~/.local/bin` is in their `PATH`.
 - [✅] **Shell completions** — Generate completions for bash, zsh, fish using `clap_complete`. Include them in releases or install them automatically.
 - [✅] **Man page** — Generate with `clap_mangen` and include in releases.
 
@@ -179,7 +182,17 @@ Structured plan for preparing a Rust CLI application for public distribution via
 
 ---
 
-## 11. Documentation
+## 11. Build System — Auto-Increment Build Number
+
+- [✅] **`BUILD_NUMBER` file** — Stores the current build number as a plain integer, tracked in git.
+- [✅] **`build.rs` auto-increment** — Cargo's build script reads `BUILD_NUMBER`, increments it by 1, and writes it back on every compilation. It then sets `cargo:rustc-env=BUILD_NUMBER=<n>` so the value is available at compile time via `env!("BUILD_NUMBER")`.
+- [✅] **Embedded in `--version`** — `src/cli.rs` uses `concat!(env!("CARGO_PKG_VERSION"), " (build ", env!("BUILD_NUMBER"), ")")` to produce output like `0.3.0 (build 70)`.
+- [✅] **Unified pipeline** — Both `cargo build` and `make build` go through cargo, so the same `build.rs` mechanism triggers in both cases. The Makefile is a thin wrapper with no separate numbering logic.
+- [✅] **Always reruns** — `build.rs` intentionally runs on every build because it modifies `BUILD_NUMBER` itself, which cargo detects as a change.
+
+---
+
+## 12. Documentation
 
 - [✅] **README sections** — Must include: Overview, Installation, Usage (with examples), Configuration, Contributing, License.
 - [✅] **Badges in README** — Add: CI status, crates.io version, license, MSRV.
