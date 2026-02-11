@@ -3,7 +3,7 @@
 [![CI](https://github.com/INS-JVidal/livetree/actions/workflows/ci.yml/badge.svg)](https://github.com/INS-JVidal/livetree/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/livetree)](https://crates.io/crates/livetree)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![MSRV](https://img.shields.io/badge/MSRV-1.74-blue)](https://github.com/INS-JVidal/livetree)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue)](https://github.com/INS-JVidal/livetree)
 
 Real-time directory tree watcher for the terminal, with incremental updates and minimal flicker.
 
@@ -108,7 +108,7 @@ NO_COLOR=1 livetree .
 
 ### MSRV
 
-- Minimum supported Rust version: **1.74**
+- Minimum supported Rust version: **1.85**
 
 ## Quality and security checks
 

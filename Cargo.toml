@@ -2,7 +2,7 @@
 name = "livetree"
 version = "0.4.0"
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.85"
 authors = ["Jordi Vidal"]
 description = "Real-time directory tree watcher with flicker-free rendering"
 readme = "README.md"
