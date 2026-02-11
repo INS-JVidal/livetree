@@ -7,4 +7,3 @@ fn test_generate_assets_binary_runs() {
         .assert()
         .success();
 }
-

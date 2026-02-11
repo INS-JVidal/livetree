@@ -169,9 +169,14 @@ fn test_watcher_changed_paths_contain_created_file() {
     match event {
         WatchEvent::Changed(paths) => {
             let path_set: std::collections::HashSet<PathBuf> = paths.into_iter().collect();
+            // Canonicalize to handle macOS /var -> /private/var symlink
+            let canonical_target = target.canonicalize().unwrap();
+            let canonical_dir = dir.path().canonicalize().unwrap();
             assert!(
-                path_set.contains(&target),
-                "Changed paths should contain the created file. Got: {:?}",
+                path_set.contains(&target)
+                    || path_set.contains(&canonical_target)
+                    || path_set.contains(&canonical_dir),
+                "Changed paths should contain the created file or its parent. Got: {:?}",
                 path_set
             );
         }

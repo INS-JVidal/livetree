@@ -128,11 +128,7 @@ fn test_default_ignores() {
     let mut cfg = default_config();
     cfg.show_hidden = true;
     let snapshot = build_tree(tmp.path(), &cfg);
-    let names: Vec<&str> = snapshot
-        .entries
-        .iter()
-        .map(|e| e.name.as_str())
-        .collect();
+    let names: Vec<&str> = snapshot.entries.iter().map(|e| e.name.as_str()).collect();
     assert!(!names.contains(&".git"), "Should ignore .git");
     assert!(
         !names.contains(&"node_modules"),
@@ -280,10 +276,7 @@ fn test_symlink_detected() {
     let tmp = create_fixture(&["target.txt"]);
     std::os::unix::fs::symlink(tmp.path().join("target.txt"), tmp.path().join("link.txt")).unwrap();
     let snapshot = build_tree(tmp.path(), &default_config());
-    let link = snapshot
-        .entries
-        .iter()
-        .find(|e| e.name == "link.txt");
+    let link = snapshot.entries.iter().find(|e| e.name == "link.txt");
     assert!(link.is_some(), "Symlink should appear in tree");
     assert!(
         link.unwrap().is_symlink,

@@ -2,7 +2,7 @@
 //! rendering via ratatui's immediate-mode draw loop.
 
 use crate::highlight::HighlightTracker;
-use crate::render::{help_bar_line, status_bar_line, tree_to_lines, RenderConfig, truncation_line};
+use crate::render::{help_bar_line, status_bar_line, tree_to_lines, truncation_line, RenderConfig};
 use crate::terminal::Term;
 use crate::tree::{TreeBuilder, TreeConfig, TreeSnapshot, WalkdirTreeBuilder};
 use crate::watcher::WatchEvent;

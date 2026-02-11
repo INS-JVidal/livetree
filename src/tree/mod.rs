@@ -4,6 +4,7 @@ mod layout;
 pub(crate) mod walk;
 
 use globset::GlobSet;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 pub use walk::{build_ignore_set, build_tree};
@@ -55,6 +56,13 @@ pub struct TreeSnapshot {
     pub entries: Vec<TreeEntry>,
     /// Total number of entries discovered before truncation.
     pub total_entries: usize,
+}
+
+impl Deref for TreeSnapshot {
+    type Target = [TreeEntry];
+    fn deref(&self) -> &[TreeEntry] {
+        &self.entries
+    }
 }
 
 /// Abstraction over tree construction so it can be swapped or mocked.

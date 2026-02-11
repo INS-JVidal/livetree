@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-02-11
+
+### Added
+- `install.sh` — curl-pipe-to-sh installer for Linux and macOS (x86_64/aarch64).
+- aarch64 release targets: `aarch64-unknown-linux-gnu` (cross-compiled) and `aarch64-apple-darwin`.
+
+### Changed
+- Updated all GitHub URLs from `jvidal/livetree` to `INS-JVidal/livetree`.
+- Improved `.gitignore` to exclude planning files, chat logs, and editor directories.
+- `TreeSnapshot` now implements `Deref<[TreeEntry]>` for ergonomic access to entries.
+
+### Fixed
+- Unused import warning (`TreeEntry` in `walk.rs`).
+- `truncate_middle` test expectation aligned with actual implementation output.
+- Changed-directory highlight color assertion (turquoise RGB, not named Cyan).
+- Removed personal planning files from git tracking.
+
 ## [0.3.0] - 2026-02-10
 
 ### Added

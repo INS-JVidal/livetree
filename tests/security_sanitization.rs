@@ -55,4 +55,3 @@ fn test_terminal_control_chars_are_sanitized_in_rendered_output() {
     assert!(status_text.contains("\\r"));
     assert!(status_text.contains("\\t"));
 }
-

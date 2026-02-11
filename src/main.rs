@@ -151,7 +151,7 @@ mod tests {
     fn truncate_middle_basic_case() {
         let s = "current_path_too_long";
         let truncated = truncate_middle(s, 16);
-        assert_eq!(truncated, "current_...long");
+        assert_eq!(truncated, "current...o_long");
         assert_eq!(truncated.len(), 16);
     }
 

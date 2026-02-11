@@ -318,8 +318,8 @@ fn test_changed_directory_gets_cyan_not_blue() {
         .unwrap();
     assert_eq!(
         name_span.style.fg,
-        Some(Color::Cyan),
-        "Changed directory should be cyan, not blue"
+        Some(Color::Rgb(64, 224, 208)),
+        "Changed directory should be turquoise, not blue"
     );
 }
 
