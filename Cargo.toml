@@ -23,7 +23,7 @@ crossterm = "0.28"
 crossbeam-channel = "0.5"
 clap = { version = "4", features = ["derive"] }
 globset = "0.4"
-ratatui = "0.29"
+ratatui = "0.30"
 anyhow = "1"
 ctrlc = "3"
 clap_complete = "4"
