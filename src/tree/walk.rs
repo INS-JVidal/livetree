@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
 use super::layout::compute_tree_structure;
-use super::{TreeConfig, TreeEntry, TreeSnapshot};
+use super::{TreeConfig, TreeSnapshot};
 
 /// Raw entry data collected during filesystem traversal, before layout computation.
 pub(super) type RawEntry = (

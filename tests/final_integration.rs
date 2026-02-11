@@ -130,7 +130,7 @@ fn test_full_lifecycle() {
         info!("  [PASS] Sort order correct (dirs before files)");
 
         // All entries at depth > 0 have non-empty prefixes
-        for entry in &entries {
+        for entry in entries.iter() {
             if entry.depth > 0 {
                 assert!(
                     !entry.prefix.is_empty(),
