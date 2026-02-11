@@ -37,7 +37,7 @@ fn test_nonexistent_path_exits_with_error() {
         .arg("/this/path/does/not/exist")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No such file"));
+        .stderr(predicate::str::contains("/this/path/does/not/exist"));
 }
 
 #[test]

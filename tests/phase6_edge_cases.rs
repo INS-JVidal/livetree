@@ -144,11 +144,7 @@ fn test_nested_empty_directories() {
     fs::create_dir_all(tmp.path().join("a/b/c")).unwrap();
 
     let entries = build_tree(tmp.path(), &default_config());
-    let names: Vec<&str> = entries
-        .entries
-        .iter()
-        .map(|e| e.name.as_str())
-        .collect();
+    let names: Vec<&str> = entries.entries.iter().map(|e| e.name.as_str()).collect();
     assert!(names.contains(&"a"));
     assert!(names.contains(&"b"));
     assert!(names.contains(&"c"));
@@ -212,11 +208,7 @@ fn test_entry_with_special_characters() {
     fs::write(tmp.path().join("emoji-🎉.txt"), "").unwrap();
 
     let entries = build_tree(tmp.path(), &default_config());
-    let names: Vec<&str> = entries
-        .entries
-        .iter()
-        .map(|e| e.name.as_str())
-        .collect();
+    let names: Vec<&str> = entries.entries.iter().map(|e| e.name.as_str()).collect();
     assert!(names.contains(&"café.txt"));
     assert!(names.contains(&"日本語.md"));
     assert!(names.contains(&"emoji-🎉.txt"));

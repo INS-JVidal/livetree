@@ -22,8 +22,9 @@ const ERROR_STYLE: Style = Style::new().fg(Color::Red);
 const PREFIX_STYLE: Style = Style::new().fg(Color::White);
 const CHANGED_STYLE: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
 // Turquoise-green style for changed directories (distinct from default blue).
-const CHANGED_DIR_STYLE: Style =
-    Style::new().fg(Color::Rgb(64, 224, 208)).add_modifier(Modifier::BOLD);
+const CHANGED_DIR_STYLE: Style = Style::new()
+    .fg(Color::Rgb(64, 224, 208))
+    .add_modifier(Modifier::BOLD);
 
 /// Sanitize control characters to avoid terminal control-sequence injection.
 fn sanitize_terminal_text(input: &str) -> String {
@@ -82,7 +83,11 @@ fn entry_to_line(
     // Name + decorations
     if is_changed {
         // Changed entries: directories use turquoise-green, others use cyan bold.
-        let style = if entry.is_dir { CHANGED_DIR_STYLE } else { CHANGED_STYLE };
+        let style = if entry.is_dir {
+            CHANGED_DIR_STYLE
+        } else {
+            CHANGED_STYLE
+        };
         spans.push(Span::styled(safe_name.clone(), style));
         if entry.is_symlink {
             if let Some(ref target) = entry.symlink_target {
