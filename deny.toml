@@ -2,6 +2,7 @@
 version = 2
 ignore = [
     "RUSTSEC-2024-0436",  # paste unmaintained — transitive via ratatui, no action available
+    "RUSTSEC-2024-0384",  # instant unmaintained — transitive via notify, no action available
 ]
 
 [licenses]
@@ -13,6 +14,8 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
 ]
 
 [sources]
