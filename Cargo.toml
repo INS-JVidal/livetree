@@ -17,7 +17,7 @@ default = []
 
 [dependencies]
 notify = "7"
-notify-debouncer-full = "0.4"
+notify-debouncer-full = "0.7"
 walkdir = "2"
 crossterm = "0.28"
 crossbeam-channel = "0.5"
