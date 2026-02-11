@@ -39,5 +39,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.74.0
-      - run: cargo build
+      - run: rm Cargo.lock && cargo build
 

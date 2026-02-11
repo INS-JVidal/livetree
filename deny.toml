@@ -1,10 +1,8 @@
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-unsound = "deny"
+version = 2
 
 [licenses]
-unlicensed = "deny"
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
@@ -16,4 +14,3 @@ allow = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-
