@@ -19,7 +19,7 @@ default = []
 notify = "7"
 notify-debouncer-full = "0.4"
 walkdir = "2"
-crossterm = "0.28"
+crossterm = "0.29"
 crossbeam-channel = "0.5"
 clap = { version = "4", features = ["derive"] }
 globset = "0.4"
